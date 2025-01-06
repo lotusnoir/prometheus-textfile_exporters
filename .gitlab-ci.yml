@@ -1,0 +1,36 @@
+---
+stages:
+  - push
+
+variables:
+  GITHUB_USER: lotusnoir
+  ANSIBLE_REMOTE_TMP: /tmp
+  PY_COLORS: 1
+
+##################################################
+# PUSH CODE WHEN ALL TEST OK
+##################################################
+push_src_on_github:
+  stage: push
+  image: alpine:latest
+  before_script:
+    - apk add git openssh-client
+    - eval $(ssh-agent -s)
+    - echo "${GITHUB_USER_PRIVATE_KEY}" | tr -d '\r' | ssh-add -
+    - mkdir -p ~/.ssh
+    - chmod 700 ~/.ssh
+    - echo -e "Host *\n\tUser ansible\n\tStrictHostKeyChecking no\n\tForwardAgent yes\n\n" > ~/.ssh/config
+    - git config --global user.email "${GITHUB_USER_EMAIL}"
+    - git config --global user.name "${GITHUB_USER}"
+    - git config --global init.defaultBranch main
+    - COMMENT=$(git log -1 --pretty=%B | head -1)
+  script:
+    - git clone git@github.com:${GITHUB_USER}/prometheus-textfile_exporters.git /tmp/prometheus-textfile_exporters
+    - find /tmp/prometheus-textfile_exporters -mindepth 1 -maxdepth 1 ! -name '.git' -exec rm -rf "{}" +;
+    - rm -rf .git
+    - cp -r . /tmp/prometheus-textfile_exporters/
+    - cd /tmp/prometheus-textfile_exporters
+    - git add -A
+    - git commit -m "${COMMENT}" || echo "No changes, nothing to commit!"
+    - git push --follow-tags
+
