@@ -8,18 +8,31 @@ if [ "$USER" != "root" ] ; then
     exit 2
 fi
 
+#################################
+### Check
+#################################
 UFW_STATE=0
 UFW_EXIST=0
 PROBLEM_COUNT=0
 
 if [ -f /sbin/ufw ]; then
 	UFW_EXIST=1
-	UFW_STATE=$(ufw status | grep "Status: active" | wc -l)
+	UFW_STATE=$(/sbin/ufw status | grep "Status: active" | wc -l)
+        if [ "$?" -ne "0" ] ; then
+            PROBLEM_COUNT=$((PROBLEM_COUNT + 1))
+        fi
+fi
+if [ -f /usr/sbin/ufw ]; then
+	UFW_EXIST=1
+	UFW_STATE=$(/usr/sbin/ufw status | grep "Status: active" | wc -l)
         if [ "$?" -ne "0" ] ; then
             PROBLEM_COUNT=$((PROBLEM_COUNT + 1))
         fi
 fi
 
+#################################
+### Print
+#################################
 echo "# HELP ufw_check_problems Count problems encountered while checking ufw"
 echo "# TYPE ufw_check_problems gauge"
 echo ufw_check_problems $PROBLEM_COUNT
