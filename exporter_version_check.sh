@@ -49,6 +49,7 @@ CONNTRACK_VERSION=0
 CONNTRACK_VERSION_LATEST=0
 if [ -f /usr/local/bin/conntrack_exporter ]; then
 	#CONNTRACK_VERSION=$(/usr/local/bin/conntrack_exporter --version | head -1| awk '{print $3}')
+	CONNTRACK_VERSION="0.3.1"
         #if [ "$?" -ne "0" ] ; then PROBLEM_COUNT=$((PROBLEM_COUNT + 1)); fi
 	CONNTRACK_VERSION_LATEST=$(/usr/bin/curl -s https://api.github.com/repos/hiveco/conntrack_exporter/releases/latest | grep '"tag_name"' | tr -d '"' | awk '{print $NF}' | sed -r 's/[v,]//gi')
         if [ "$?" -ne "0" ] ; then PROBLEM_COUNT=$((PROBLEM_COUNT + 1)); fi
@@ -75,6 +76,22 @@ echo blackbox_exporter_version $BLACKBOX_VERSION
 echo "# HELP blackbox_exporter_version_latest Check blackbox_exporter binary latest version on repo project"
 echo "# TYPE blackbox_exporter_version_latest gauge"
 echo blackbox_exporter_version_latest $BLACKBOX_VERSION_LATEST
+
+### fluentbit
+FLUENTBIT_VERSION=0
+FLUENTBIT_VERSION_LATEST=0
+if [ -f /opt/fluent-bit/bin/fluent-bit ]; then
+	FLUENTBIT_VERSION=$(/opt/fluent-bit/bin/fluent-bit --version | head -1| awk '{print $3}' | sed 's/v//')
+        if [ "$?" -ne "0" ] ; then PROBLEM_COUNT=$((PROBLEM_COUNT + 1)); fi
+	FLUENTBIT_VERSION_LATEST=$(/usr/bin/curl -s https://api.github.com/repos/fluent/fluent-bit/releases/latest| grep '"tag_name"' | tr -d '"' | awk '{print $NF}' | sed -r 's/[v,]//gi')
+        if [ "$?" -ne "0" ] ; then PROBLEM_COUNT=$((PROBLEM_COUNT + 1)); fi
+fi
+echo "# HELP fluentbit_exporter_version Check fluentbit_exporter binary version"
+echo "# TYPE fluentbit_exporter_version gauge"
+echo fluentbit_exporter_version $FLUENTBIT_VERSION
+echo "# HELP fluentbit_exporter_version_latest Check fluentbit_exporter binary latest version on repo project"
+echo "# TYPE fluentbit_exporter_version_latest gauge"
+echo fluentbit_exporter_version_latest $FLUENTBIT_VERSION_LATEST
 
 
 
