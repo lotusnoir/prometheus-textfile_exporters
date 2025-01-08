@@ -18,7 +18,7 @@ NODE_VERSION_LATEST=0
 if [ -f /usr/local/bin/node_exporter ]; then
 	NODE_VERSION=$(/usr/local/bin/node_exporter --version | head -1| awk '{print $3}')
         if [ "$?" -ne "0" ] ; then PROBLEM_COUNT=$((PROBLEM_COUNT + 1)); fi
-	NODE_VERSION_LATEST=$(curl -s https://api.github.com/repos/prometheus/node_exporter/releases/latest | grep '"tag_name"' | tr -d '"' | awk '{print $NF}' | sed -r 's/[v,]//gi')
+	NODE_VERSION_LATEST=$(/usr/bin/curl -s https://api.github.com/repos/prometheus/node_exporter/releases/latest | grep '"tag_name"' | tr -d '"' | awk '{print $NF}' | sed -r 's/[v,]//gi')
         if [ "$?" -ne "0" ] ; then PROBLEM_COUNT=$((PROBLEM_COUNT + 1)); fi
 fi
 echo "# HELP node_exporter_version Check node_exporter binary version"
@@ -34,7 +34,7 @@ CHRONY_VERSION_LATEST=0
 if [ -f /usr/local/bin/node_exporter ]; then
 	CHRONY_VERSION=$(/usr/local/bin/chrony_exporter --version | head -1| awk '{print $3}')
         if [ "$?" -ne "0" ] ; then PROBLEM_COUNT=$((PROBLEM_COUNT + 1)); fi
-	CHRONY_VERSION_LATEST=$(curl -s https://api.github.com/repos/SuperQ/chrony_exporter/releases/latest| grep '"tag_name"' | tr -d '"' | awk '{print $NF}' | sed -r 's/[v,]//gi')
+	CHRONY_VERSION_LATEST=$(/usr/bin/curl -s https://api.github.com/repos/SuperQ/chrony_exporter/releases/latest| grep '"tag_name"' | tr -d '"' | awk '{print $NF}' | sed -r 's/[v,]//gi')
         if [ "$?" -ne "0" ] ; then PROBLEM_COUNT=$((PROBLEM_COUNT + 1)); fi
 fi
 echo "# HELP chrony_exporter_version Check chrony_exporter binary version"
@@ -50,7 +50,7 @@ CONNTRACK_VERSION_LATEST=0
 if [ -f /usr/local/bin/conntrack_exporter ]; then
 	#CONNTRACK_VERSION=$(/usr/local/bin/conntrack_exporter --version | head -1| awk '{print $3}')
         #if [ "$?" -ne "0" ] ; then PROBLEM_COUNT=$((PROBLEM_COUNT + 1)); fi
-	CONNTRACK_VERSION_LATEST=$(curl -s https://api.github.com/repos/hiveco/conntrack_exporter/releases/latest | grep '"tag_name"' | tr -d '"' | awk '{print $NF}' | sed -r 's/[v,]//gi')
+	CONNTRACK_VERSION_LATEST=$(/usr/bin/curl -s https://api.github.com/repos/hiveco/conntrack_exporter/releases/latest | grep '"tag_name"' | tr -d '"' | awk '{print $NF}' | sed -r 's/[v,]//gi')
         if [ "$?" -ne "0" ] ; then PROBLEM_COUNT=$((PROBLEM_COUNT + 1)); fi
 fi
 echo "# HELP conntrack_exporter_version Check conntrack_exporter binary version"
@@ -66,7 +66,7 @@ BLACKBOX_VERSION_LATEST=0
 if [ -f /usr/local/bin/blackbox_exporter ]; then
 	BLACKBOX_VERSION=$(/usr/local/bin/blackbox_exporter --version | head -1| awk '{print $3}')
         if [ "$?" -ne "0" ] ; then PROBLEM_COUNT=$((PROBLEM_COUNT + 1)); fi
-	BLACKBOX_VERSION_LATEST=$(curl -s https://api.github.com/repos/prometheus/blackbox_exporter/releases/latest| grep '"tag_name"' | tr -d '"' | awk '{print $NF}' | sed -r 's/[v,]//gi')
+	BLACKBOX_VERSION_LATEST=$(/usr/bin/curl -s https://api.github.com/repos/prometheus/blackbox_exporter/releases/latest| grep '"tag_name"' | tr -d '"' | awk '{print $NF}' | sed -r 's/[v,]//gi')
         if [ "$?" -ne "0" ] ; then PROBLEM_COUNT=$((PROBLEM_COUNT + 1)); fi
 fi
 echo "# HELP blackbox_exporter_version Check blackbox_exporter binary version"
