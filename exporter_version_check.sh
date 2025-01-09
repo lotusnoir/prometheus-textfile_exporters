@@ -15,7 +15,7 @@ fi
 # Set global variables
 PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 PROBLEM_COUNT=0
-LATEST_CHECK=0
+LATEST_CHECK=1
 
 #######################################
 ### Checks
