@@ -116,6 +116,22 @@ echo "# HELP cadvisor_exporter_version_latest Check cadvisor_exporter binary lat
 echo "# TYPE cadvisor_exporter_version_latest gauge"
 echo "cadvisor_exporter_version_latest $CADVISOR_VERSION_LATEST"
 
+### consul
+CONSUL_VERSION=0
+CONSUL_VERSION_LATEST=0
+if [ -f /usr/bin/consul ]; then
+	CONSUL_VERSION=$(/usr/bin/consul --version | head -1| awk '{print $2}' | sed 's/v//')
+        if [ "$?" -ne "0" ] ; then PROBLEM_COUNT=$((PROBLEM_COUNT + 1)); fi
+	CONSUL_VERSION_LATEST=$(curl -s https://api.github.com/repos/hashicorp/consul/releases/latest| grep '"tag_name"' | tr -d '"' | awk '{print $NF}' | sed -r 's/[v,]//gi')
+        if [ "$?" -ne "0" ] ; then PROBLEM_COUNT=$((PROBLEM_COUNT + 1)); fi
+fi
+echo "# HELP consul_version Check consul binary version"
+echo "# TYPE consul_version gauge"
+echo "consul_version $CONSUL_VERSION"
+echo "# HELP consul_version_latest Check consul binary latest version on repo project"
+echo "# TYPE consul_version_latest gauge"
+echo "consul_version_latest $CONSUL_VERSION_LATEST"
+
 
 
 ### end
