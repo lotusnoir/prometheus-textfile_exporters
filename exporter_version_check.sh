@@ -100,6 +100,22 @@ echo "# HELP fluentbit_exporter_version_latest Check fluentbit_exporter binary l
 echo "# TYPE fluentbit_exporter_version_latest gauge"
 echo "fluentbit_exporter_version_latest $FLUENTBIT_VERSION_LATEST"
 
+### cadvisor
+CADVISOR_VERSION=0
+CADVISOR_VERSION_LATEST=0
+if [ -f /opt/cadvisor/cadvisor ]; then
+	CADVISOR_VERSION=$(/opt/cadvisor/cadvisor --version | head -1| awk '{print $3}' | sed 's/v//')
+        if [ "$?" -ne "0" ] ; then PROBLEM_COUNT=$((PROBLEM_COUNT + 1)); fi
+	CADVISOR_VERSION_LATEST=$(curl -s https://api.github.com/repos/google/cadvisor/releases/latest| grep '"tag_name"' | tr -d '"' | awk '{print $NF}' | sed -r 's/[v,]//gi')
+        if [ "$?" -ne "0" ] ; then PROBLEM_COUNT=$((PROBLEM_COUNT + 1)); fi
+fi
+echo "# HELP cadvisor_exporter_version Check cadvisor_exporter binary version"
+echo "# TYPE cadvisor_exporter_version gauge"
+echo "cadvisor_exporter_version $CADVISOR_VERSION"
+echo "# HELP cadvisor_exporter_version_latest Check cadvisor_exporter binary latest version on repo project"
+echo "# TYPE cadvisor_exporter_version_latest gauge"
+echo "cadvisor_exporter_version_latest $CADVISOR_VERSION_LATEST"
+
 
 
 ### end
