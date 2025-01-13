@@ -4,7 +4,7 @@ if [ -z "$USER" ] ; then
     USER=$(whoami)
 fi
 if [ "$USER" != "root" ] ; then
-    echo "$(basename $0) must be run as root!"
+    echo "$(basename "$0") must be run as root!"
     exit 2
 fi
 
@@ -17,14 +17,14 @@ PROBLEM_COUNT=0
 
 if [ -f /sbin/ufw ]; then
 	UFW_EXIST=1
-	UFW_STATE=$(/sbin/ufw status | grep "Status: active" | wc -l)
+	UFW_STATE=$(/sbin/ufw status | grep -c "Status: active")
         if [ "$?" -ne "0" ] ; then
             PROBLEM_COUNT=$((PROBLEM_COUNT + 1))
         fi
 fi
 if [ -f /usr/sbin/ufw ]; then
 	UFW_EXIST=1
-	UFW_STATE=$(/usr/sbin/ufw status | grep "Status: active" | wc -l)
+	UFW_STATE=$(/usr/sbin/ufw status | grep -c "Status: active")
         if [ "$?" -ne "0" ] ; then
             PROBLEM_COUNT=$((PROBLEM_COUNT + 1))
         fi
@@ -35,15 +35,15 @@ fi
 #################################
 echo "# HELP ufw_check_problems Count problems encountered while checking ufw"
 echo "# TYPE ufw_check_problems gauge"
-echo ufw_check_problems $PROBLEM_COUNT
+echo "ufw_check_problems $PROBLEM_COUNT"
 
 echo "# HELP ufw_exist Check if ufw is installed"
 echo "# TYPE ufw_exist gauge"
-echo ufw_exist $UFW_EXIST
+echo "ufw_exist $UFW_EXIST"
 
 echo "# HELP ufw_up Check if ufw is running"
 echo "# TYPE ufw_up gauge"
-echo ufw_up $UFW_STATE
+echo "ufw_up $UFW_STATE"
 
 if [ "$PROBLEM_COUNT" -ne "0" ] ; then
     exit 1
