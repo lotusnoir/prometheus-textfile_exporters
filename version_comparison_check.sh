@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Add proxy variables 
+# Add proxy variables
 if [ -f /etc/profile.d/proxy.sh ]; then
     source /etc/profile.d/proxy.sh
 fi
@@ -163,6 +163,69 @@ if [ -f /usr/bin/consul ]; then
 		echo "version_comparison_consul 0"
 	fi
 fi
+
+### snoopy
+if [ -f /usr/sbin/snoopyctl ]; then
+	SNOOPY_VERSION=$(/usr/sbin/snoopyctl version | head -1| awk '{print $NF}')
+        if [ "$?" -ne "0" ] ; then PROBLEM_COUNT=$((PROBLEM_COUNT + 1)); fi
+	SNOOPY_VERSION_LATEST=$(curl -s https://api.github.com/repos/a2o/snoopy/releases/latest| grep '"tag_name"' | tr -d '"' | awk '{print $NF}' | sed -e 's/[-,]//gi' -e 's/snoopy//')
+	if [ "$?" -ne "0" ] ; then PROBLEM_COUNT=$((PROBLEM_COUNT + 1)); fi
+
+	echo "# HELP version_comparison_snoopy Check consul binary version and latest version on repo project"
+	echo "# TYPE version_comparison_snoopy gauge"
+	if [ "$(echo "$SNOOPY_VERSION" | grep -c -E '[0-9]{1,4}\.[0-9]{1,4}\.{1,4}')" -eq "1" ] ; then
+		if [ "$(echo "$SNOOPY_VERSION_LATEST" | grep -c -E '[0-9]{1,4}\.[0-9]{1,4}\.{1,4}')" -eq "1" ] ; then
+			echo "version_comparison_snoopy{installed=\"$SNOOPY_VERSION\", latest=\"$SNOOPY_VERSION_LATEST\"} 2"
+		else
+			echo "version_comparison_snoopy{installed=\"$SNOOPY_VERSION\"} 1"
+		fi
+	else
+		echo "version_comparison_snoopy 0"
+	fi
+fi
+
+### /usr/bin/keepalived_exporter
+if [ -f /usr/bin/keepalived_exporter ]; then
+	KEEPALIVED_VERSION=$(/usr/bin/keepalived_exporter -version  |& awk '{print $2}')
+        if [ "$?" -ne "0" ] ; then PROBLEM_COUNT=$((PROBLEM_COUNT + 1)); fi
+	KEEPALIVED_VERSION_LATEST=$(curl -s https://api.github.com/repos/mehdy/keepalived-exporter/releases/latest| grep '"tag_name"' | tr -d '"' | awk '{print $NF}' | sed -r 's/[v,]//gi')
+	if [ "$?" -ne "0" ] ; then PROBLEM_COUNT=$((PROBLEM_COUNT + 1)); fi
+
+	echo "# HELP version_comparison_keepalived Check consul binary version and latest version on repo project"
+	echo "# TYPE version_comparison_keepalived gauge"
+	if [ "$(echo "$KEEPALIVED_VERSION" | grep -c -E '[0-9]{1,4}\.[0-9]{1,4}\.{1,4}')" -eq "1" ] ; then
+		if [ "$(echo "$KEEPALIVED_VERSION_LATEST" | grep -c -E '[0-9]{1,4}\.[0-9]{1,4}\.{1,4}')" -eq "1" ] ; then
+			echo "version_comparison_keepalived{installed=\"$KEEPALIVED_VERSION\", latest=\"$KEEPALIVED_VERSION_LATEST\"} 2"
+		else
+			echo "version_comparison_keepalived{installed=\"$KEEPALIVED_VERSION\"} 1"
+		fi
+	else
+		echo "version_comparison_keepalived 0"
+	fi
+fi
+
+### traefikee in docker
+if [ -f /usr/bin/docker ]; then
+	if [ "$(docker ps -a | grep -c traefik_proxy)" -eq "1" ]; then
+		TRAEFIKEE_VERSION=$(docker exec -it traefik_proxy sh -c "traefikee version" | head -1| awk '{print $2}' | sed 's/v//')
+	        if [ "$?" -ne "0" ] ; then PROBLEM_COUNT=$((PROBLEM_COUNT + 1)); fi
+		TRAEFIKEE_VERSION_LATEST=$(curl -s https://doc.traefik.io/traefik-enterprise/kb/release-notes/ | grep '<h2 id="v.*">v' | grep -oP '>v\K[^ ]+' | head -1)
+		if [ "$?" -ne "0" ] ; then PROBLEM_COUNT=$((PROBLEM_COUNT + 1)); fi
+
+		echo "# HELP version_comparison_traefikee Check consul binary version and latest version on repo project"
+		echo "# TYPE version_comparison_traefikee gauge"
+		if [ "$(echo "$TRAEFIKEE_VERSION" | grep -c -E '[0-9]{1,4}\.[0-9]{1,4}\.{1,4}')" -eq "1" ] ; then
+			if [ "$(echo "$TRAEFIKEE_VERSION_LATEST" | grep -c -E '[0-9]{1,4}\.[0-9]{1,4}\.{1,4}')" -eq "1" ] ; then
+				echo "version_comparison_traefikee{installed=\"$TRAEFIKEE_VERSION\", latest=\"$TRAEFIKEE_VERSION_LATEST\"} 2"
+			else
+				echo "version_comparison_traefikee{installed=\"$TRAEFIKEE_VERSION\"} 1"
+			fi
+		else
+			echo "version_comparison_traefikee 0"
+		fi
+	fi
+fi
+
 
 ### end
 if [ "$PROBLEM_COUNT" -ne "0" ] ; then
