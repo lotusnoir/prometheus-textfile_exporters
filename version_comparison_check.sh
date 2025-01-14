@@ -28,16 +28,16 @@ if [ -f /usr/local/bin/node_exporter ]; then
 	NODE_VERSION_LATEST=$(curl -s https://api.github.com/repos/prometheus/node_exporter/releases/latest | grep '"tag_name"' | tr -d '"' | awk '{print $NF}' | sed -r 's/[v,]//gi')
 	if [ "$?" -ne "0" ] ; then PROBLEM_COUNT=$((PROBLEM_COUNT + 1)); fi
 
-	echo "# HELP node_exporter_version_comparison Check node_exporter binary version and latest version on repo project"
-	echo "# TYPE node_exporter_version_comparison gauge"
+	echo "# HELP version_comparison_node_exporter Check node_exporter binary version and latest version on repo project"
+	echo "# TYPE version_comparison_node_exporter gauge"
 	if [ "$(echo "$NODE_VERSION" | grep -c -E '[0-9]{1,4}\.[0-9]{1,4}\.{1,4}')" -eq "1" ] ; then
 		if [ "$(echo "$NODE_VERSION_LATEST" | grep -c -E '[0-9]{1,4}\.[0-9]{1,4}\.{1,4}')" -eq "1" ] ; then
-			echo "node_exporter_version_comparison{installed=\"$NODE_VERSION\", latest=\"$NODE_VERSION_LATEST\"} 2"
+			echo "version_comparison_node_exporter{installed=\"$NODE_VERSION\", latest=\"$NODE_VERSION_LATEST\"} 2"
 		else
-			echo "node_exporter_version_comparison{installed=\"$NODE_VERSION\"} 1"
+			echo "version_comparison_node_exporter{installed=\"$NODE_VERSION\"} 1"
 		fi
 	else
-		echo "node_exporter_version_comparison 0"
+		echo "version_comparison_node_exporter 0"
 	fi
 fi
 
@@ -48,16 +48,16 @@ if [ -f  /usr/local/bin/chrony_exporter ]; then
 	CHRONY_VERSION_LATEST=$(curl -s https://api.github.com/repos/SuperQ/chrony_exporter/releases/latest| grep '"tag_name"' | tr -d '"' | awk '{print $NF}' | sed -r 's/[v,]//gi')
 	if [ "$?" -ne "0" ] ; then PROBLEM_COUNT=$((PROBLEM_COUNT + 1)); fi
 
-	echo "# HELP chrony_exporter_version_comparison Check chrony_exporter binary version and latest version on repo project"
-	echo "# TYPE chrony_exporter_version_comparison gauge"
+	echo "# HELP version_comparison_chrony_exporter Check chrony_exporter binary version and latest version on repo project"
+	echo "# TYPE version_comparison_chrony_exporter gauge"
 	if [ "$(echo "$CHRONY_VERSION" | grep -c -E '[0-9]{1,4}\.[0-9]{1,4}\.{1,4}')" -eq "1" ] ; then
 		if [ "$(echo "$CHRONY_VERSION_LATEST" | grep -c -E '[0-9]{1,4}\.[0-9]{1,4}\.{1,4}')" -eq "1" ] ; then
-			echo "chrony_exporter_version_comparison{installed=\"$CHRONY_VERSION\", latest=\"$CHRONY_VERSION_LATEST\"} 2"
+			echo "version_comparison_chrony_exporter{installed=\"$CHRONY_VERSION\", latest=\"$CHRONY_VERSION_LATEST\"} 2"
 		else
-			echo "chrony_exporter_version_comparison{installed=\"$CHRONY_VERSION\"} 1"
+			echo "version_comparison_chrony_exporter{installed=\"$CHRONY_VERSION\"} 1"
 		fi
 	else
-		echo "chrony_exporter_version_comparison 0"
+		echo "version_comparison_chrony_exporter 0"
 	fi
 fi
 
@@ -68,16 +68,16 @@ if [ -f /usr/local/bin/conntrack_exporter ]; then
 	CONNTRACK_VERSION_LATEST=$(curl -s https://api.github.com/repos/hiveco/conntrack_exporter/releases/latest | grep '"tag_name"' | tr -d '"' | awk '{print $NF}' | sed -r 's/[v,]//gi')
 	if [ "$?" -ne "0" ] ; then PROBLEM_COUNT=$((PROBLEM_COUNT + 1)); fi
 
-	echo "# HELP conntrack_exporter_version_comparison Check conntrack_exporter binary version and latest version on repo project"
-	echo "# TYPE conntrack_exporter_version_comparison gauge"
+	echo "# HELP version_comparison_conntrack_exporter Check conntrack_exporter binary version and latest version on repo project"
+	echo "# TYPE version_comparison_conntrack_exporter gauge"
 	if [ "$(echo "$CONNTRACK_VERSION" | grep -c -E '[0-9]{1,4}\.[0-9]{1,4}\.{1,4}')" -eq "1" ] ; then
 		if [ "$(echo "$CONNTRACK_VERSION_LATEST" | grep -c -E '[0-9]{1,4}\.[0-9]{1,4}\.{1,4}')" -eq "1" ] ; then
-			echo "conntrack_exporter_version_comparison{installed=\"$CONNTRACK_VERSION\", latest=\"$CONNTRACK_VERSION_LATEST\"} 2"
+			echo "version_comparison_conntrack_exporter{installed=\"$CONNTRACK_VERSION\", latest=\"$CONNTRACK_VERSION_LATEST\"} 2"
 		else
-			echo "conntrack_exporter_version_comparison{installed=\"$CONNTRACK_VERSION\"} 1"
+			echo "version_comparison_conntrack_exporter{installed=\"$CONNTRACK_VERSION\"} 1"
 		fi
 	else
-		echo "conntrack_exporter_version_comparison 0"
+		echo "version_comparison_conntrack_exporter 0"
 	fi
 
 fi
@@ -89,16 +89,16 @@ if [ -f /usr/local/bin/blackbox_exporter ]; then
 	BLACKBOX_VERSION_LATEST=$(curl -s https://api.github.com/repos/prometheus/blackbox_exporter/releases/latest| grep '"tag_name"' | tr -d '"' | awk '{print $NF}' | sed -r 's/[v,]//gi')
 	if [ "$?" -ne "0" ] ; then PROBLEM_COUNT=$((PROBLEM_COUNT + 1)); fi
 
-	echo "# HELP blackbox_exporter_version_comparison Check blackbox_exporter binary version and latest version on repo project"
-	echo "# TYPE blackbox_exporter_version_comparison gauge"
+	echo "# HELP version_comparison_blackbox_exporter Check blackbox_exporter binary version and latest version on repo project"
+	echo "# TYPE version_comparison_blackbox_exporter gauge"
 	if [ "$(echo "$BLACKBOX_VERSION" | grep -c -E '[0-9]{1,4}\.[0-9]{1,4}\.{1,4}')" -eq "1" ] ; then
 		if [ "$(echo "$BLACKBOX_VERSION_LATEST" | grep -c -E '[0-9]{1,4}\.[0-9]{1,4}\.{1,4}')" -eq "1" ] ; then
-			echo "blackbox_exporter_version_comparison{installed=\"$BLACKBOX_VERSION\", latest=\"$BLACKBOX_VERSION_LATEST\"} 2"
+			echo "version_comparison_blackbox_exporter{installed=\"$BLACKBOX_VERSION\", latest=\"$BLACKBOX_VERSION_LATEST\"} 2"
 		else
-			echo "blackbox_exporter_version_comparison{installed=\"$BLACKBOX_VERSION\"} 1"
+			echo "version_comparison_blackbox_exporter{installed=\"$BLACKBOX_VERSION\"} 1"
 		fi
 	else
-		echo "blackbox_exporter_version_comparison 0"
+		echo "version_comparison_blackbox_exporter 0"
 	fi
 fi
 
@@ -109,16 +109,16 @@ if [ -f /opt/fluent-bit/bin/fluent-bit ]; then
 	FLUENTBIT_VERSION_LATEST=$(curl -s https://api.github.com/repos/fluent/fluent-bit/releases/latest| grep '"tag_name"' | tr -d '"' | awk '{print $NF}' | sed -r 's/[v,]//gi')
 	if [ "$?" -ne "0" ] ; then PROBLEM_COUNT=$((PROBLEM_COUNT + 1)); fi
 
-	echo "# HELP fluentbit_exporter_version_comparison Check fluentbit_exporter binary version and latest version on repo project"
-	echo "# TYPE fluentbit_exporter_version_comparison gauge"
+	echo "# HELP version_comparison_fluentbit_exporter Check fluentbit_exporter binary version and latest version on repo project"
+	echo "# TYPE version_comparison_fluentbit_exporter gauge"
 	if [ "$(echo "$FLUENTBIT_VERSION" | grep -c -E '[0-9]{1,4}\.[0-9]{1,4}\.{1,4}')" -eq "1" ] ; then
 		if [ "$(echo "$FLUENTBIT_VERSION_LATEST" | grep -c -E '[0-9]{1,4}\.[0-9]{1,4}\.{1,4}')" -eq "1" ] ; then
-			echo "fluentbit_exporter_version_comparison{installed=\"$FLUENTBIT_VERSION\", latest=\"$FLUENTBIT_VERSION_LATEST\"} 2"
+			echo "version_comparison_fluentbit_exporter{installed=\"$FLUENTBIT_VERSION\", latest=\"$FLUENTBIT_VERSION_LATEST\"} 2"
 		else
-			echo "fluentbit_exporter_version_comparison{installed=\"$FLUENTBIT_VERSION\"} 1"
+			echo "version_comparison_fluentbit_exporter{installed=\"$FLUENTBIT_VERSION\"} 1"
 		fi
 	else
-		echo "fluentbit_exporter_version_comparison 0"
+		echo "version_comparison_fluentbit_exporter 0"
 	fi
 
 fi
@@ -130,16 +130,16 @@ if [ -f /opt/cadvisor/cadvisor ]; then
 	CADVISOR_VERSION_LATEST=$(curl -s https://api.github.com/repos/google/cadvisor/releases/latest| grep '"tag_name"' | tr -d '"' | awk '{print $NF}' | sed -r 's/[v,]//gi')
 	if [ "$?" -ne "0" ] ; then PROBLEM_COUNT=$((PROBLEM_COUNT + 1)); fi
 
-	echo "# HELP cadvisor_exporter_version_comparison Check cadvisor_exporter binary version and latest version on repo project"
-	echo "# TYPE cadvisor_exporter_version_comparison gauge"
+	echo "# HELP version_comparison_cadvisor Check cadvisor_exporter binary version and latest version on repo project"
+	echo "# TYPE version_comparison_cadvisor gauge"
 	if [ "$(echo "$CADVISOR_VERSION" | grep -c -E '[0-9]{1,4}\.[0-9]{1,4}\.{1,4}')" -eq "1" ] ; then
 		if [ "$(echo "$CADVISOR_VERSION_LATEST" | grep -c -E '[0-9]{1,4}\.[0-9]{1,4}\.{1,4}')" -eq "1" ] ; then
-			echo "cadvisor_exporter_version_comparison{installed=\"$CADVISOR_VERSION\", latest=\"$CADVISOR_VERSION_LATEST\"} 2"
+			echo "version_comparison_cadvisor{installed=\"$CADVISOR_VERSION\", latest=\"$CADVISOR_VERSION_LATEST\"} 2"
 		else
-			echo "cadvisor_exporter_version_comparison{installed=\"$CADVISOR_VERSION\"} 1"
+			echo "version_comparison_cadvisor{installed=\"$CADVISOR_VERSION\"} 1"
 		fi
 	else
-		echo "cadvisor_exporter_version_comparison 0"
+		echo "version_comparison_cadvisor 0"
 	fi
 
 fi
@@ -151,16 +151,16 @@ if [ -f /usr/bin/consul ]; then
 	CONSUL_VERSION_LATEST=$(curl -s https://api.github.com/repos/hashicorp/consul/releases/latest| grep '"tag_name"' | tr -d '"' | awk '{print $NF}' | sed -r 's/[v,]//gi')
 	if [ "$?" -ne "0" ] ; then PROBLEM_COUNT=$((PROBLEM_COUNT + 1)); fi
 
-	echo "# HELP consul_exporter_version_comparison Check consul_exporter binary version and latest version on repo project"
-	echo "# TYPE consul_exporter_version_comparison gauge"
+	echo "# HELP version_comparison_consul Check consul binary version and latest version on repo project"
+	echo "# TYPE version_comparison_consul gauge"
 	if [ "$(echo "$CONSUL_VERSION" | grep -c -E '[0-9]{1,4}\.[0-9]{1,4}\.{1,4}')" -eq "1" ] ; then
 		if [ "$(echo "$CONSUL_VERSION_LATEST" | grep -c -E '[0-9]{1,4}\.[0-9]{1,4}\.{1,4}')" -eq "1" ] ; then
-			echo "consul_exporter_version_comparison{installed=\"$CONSUL_VERSION\", latest=\"$CONSUL_VERSION_LATEST\"} 2"
+			echo "version_comparison_consul{installed=\"$CONSUL_VERSION\", latest=\"$CONSUL_VERSION_LATEST\"} 2"
 		else
-			echo "consul_exporter_version_comparison{installed=\"$CONSUL_VERSION\"} 1"
+			echo "version_comparison_consul{installed=\"$CONSUL_VERSION\"} 1"
 		fi
 	else
-		echo "consul_exporter_version_comparison 0"
+		echo "version_comparison_consul 0"
 	fi
 fi
 
