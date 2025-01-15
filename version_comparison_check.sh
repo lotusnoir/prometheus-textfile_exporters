@@ -15,212 +15,177 @@ fi
 # Set global variables
 PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 PROBLEM_COUNT=0
+PRINT=0
 
 #######################################
 ### Checks
-# 0 = no check passed
-# 1 = latest check did not passed
-# 2 = both check passed
+
 ### node_exporter
 if [ -f /usr/local/bin/node_exporter ]; then
+	PRINT=1
+
         ### Get versions
-	NODE_VERSION=$(/usr/local/bin/node_exporter --version | head -1| awk '{print $3}')
+	NODE_EXPORTER_VERSION=$(/usr/local/bin/node_exporter --version | head -1| awk '{print $3}')
         if [ "$?" -ne "0" ] ; then PROBLEM_COUNT=$((PROBLEM_COUNT + 1)); fi
-	NODE_VERSION_LATEST=$(curl -s https://api.github.com/repos/prometheus/node_exporter/releases/latest | grep '"tag_name"' | tr -d '"' | awk '{print $NF}' | sed -r 's/[v,]//gi')
+	NODE_EXPORTER_VERSION_LATEST=$(curl -s https://api.github.com/repos/prometheus/node_exporter/releases/latest | grep '"tag_name"' | tr -d '"' | awk '{print $NF}' | sed -r 's/[v,]//gi')
         if [ "$?" -ne "0" ] ; then PROBLEM_COUNT=$((PROBLEM_COUNT + 1)); fi
 
         ### Checks and print versions
-        if [ "$(echo "$NODE_VERSION" | grep -c -E '[0-9]{1,4}\.[0-9]{1,4}\.{1,4}')" -eq "1" ] && [ "$(echo "$NODE_VERSION_LATEST" | grep -c -E '[0-9]{1,4}\.[0-9]{1,4}\.{1,4}')" -eq "1" ] ; then
-                NODE_VERSION_SCRAPE=1
-                echo "# HELP version_comparison_node_exporter Check node_exporter binary version and latest version on repo project, 1 equals, 0 not equals"
-                echo "# TYPE version_comparison_node_exporter gauge"
-                if [ "$NODE_VERSION"  == "$NODE_VERSION_LATEST" ]; then
-                        echo "version_comparison_node_exporter{installed=\"$NODE_VERSION\",latest=\"$NODE_VERSION_LATEST\"} 1"
+        if [ "$(echo "$NODE_EXPORTER_VERSION" | grep -c -E '[0-9]{1,4}\.[0-9]{1,4}\.{1,4}')" -eq "1" ] && [ "$(echo "$NODE_EXPORTER_VERSION_LATEST" | grep -c -E '[0-9]{1,4}\.[0-9]{1,4}\.{1,4}')" -eq "1" ] ; then
+                NODE_EXPORTER_VERSION_SCRAPE=1
+                if [ "$NODE_EXPORTER_VERSION"  == "$NODE_EXPORTER_VERSION_LATEST" ]; then
+			NODE_EXPORTER_VERSION_MATCH=1
                 else
-                        echo "version_comparison_node_exporter{installed=\"$NODE_VERSION\",latest=\"$NODE_VERSION_LATEST\"} 0"
+			NODE_EXPORTER_VERSION_MATCH=0
                 fi
         else
-                NODE_VERSION_SCRAPE=0
+                NODE_EXPORTER_VERSION_SCRAPE=0
         fi
-
-        ### Print scrape result
-        echo "# HELP version_comparison_node_exporter_scrape Check if versions were found 1 ok, 0 problem"
-        echo "# TYPE version_comparison_node_exporter_scrape gauge"
-        echo "version_comparison_node_exporter_scrape $NODE_VERSION_SCRAPE"
 fi
 
 ### chrony_exporter
 if [ -f  /usr/local/bin/chrony_exporter ]; then
+	PRINT=1
+
 	### Get versions
-	CHRONY_VERSION=$(/usr/local/bin/chrony_exporter --version | head -1| awk '{print $3}')
+	CHRONY_EXPORTER_VERSION=$(/usr/local/bin/chrony_exporter --version | head -1| awk '{print $3}')
         if [ "$?" -ne "0" ] ; then PROBLEM_COUNT=$((PROBLEM_COUNT + 1)); fi
-	CHRONY_VERSION_LATEST=$(curl -s https://api.github.com/repos/SuperQ/chrony_exporter/releases/latest| grep '"tag_name"' | tr -d '"' | awk '{print $NF}' | sed -r 's/[v,]//gi')
+	CHRONY_EXPORTER_VERSION_LATEST=$(curl -s https://api.github.com/repos/SuperQ/chrony_exporter/releases/latest| grep '"tag_name"' | tr -d '"' | awk '{print $NF}' | sed -r 's/[v,]//gi')
 	if [ "$?" -ne "0" ] ; then PROBLEM_COUNT=$((PROBLEM_COUNT + 1)); fi
 
-	### Checks and print versions
-	if [ "$(echo "$CHRONY_VERSION" | grep -c -E '[0-9]{1,4}\.[0-9]{1,4}\.{1,4}')" -eq "1" ] && [ "$(echo "$CHRONY_VERSION_LATEST" | grep -c -E '[0-9]{1,4}\.[0-9]{1,4}\.{1,4}')" -eq "1" ] ; then
-		CHRONY_VERSION_SCRAPE=1
-		echo "# HELP version_comparison_chrony_exporter Check chrony_exporter binary version and latest version on repo project, 1 equals, 0 not equals"
-		echo "# TYPE version_comparison_chrony_exporter gauge"
-		if [ "$CHRONY_VERSION"  == "$CHRONY_VERSION_LATEST" ]; then
-			echo "version_comparison_chrony_exporter{installed=\"$CHRONY_VERSION\",latest=\"$CHRONY_VERSION_LATEST\"} 1"
-		else
-			echo "version_comparison_chrony_exporter{installed=\"$CHRONY_VERSION\",latest=\"$CHRONY_VERSION_LATEST\"} 0"
-		fi
-	else
-		CHRONY_VERSION_SCRAPE=0
-	fi
-
-	### Print scrape result
-	echo "# HELP version_comparison_chrony_exporter_scrape Check if versions were found 1 ok, 0 problem"
-	echo "# TYPE version_comparison_chrony_exporter_scrape gauge"
-	echo "version_comparison_chrony_exporter_scrape $CHRONY_VERSION_SCRAPE"
+        ### Checks and print versions
+        if [ "$(echo "$CHRONY_EXPORTER_VERSION" | grep -c -E '[0-9]{1,4}\.[0-9]{1,4}\.{1,4}')" -eq "1" ] && [ "$(echo "$CHRONY_EXPORTER_VERSION_LATEST" | grep -c -E '[0-9]{1,4}\.[0-9]{1,4}\.{1,4}')" -eq "1" ] ; then
+                CHRONY_EXPORTER_VERSION_SCRAPE=1
+                if [ "$CHRONY_EXPORTER_VERSION"  == "$CHRONY_EXPORTER_VERSION_LATEST" ]; then
+                        CHRONY_EXPORTER_VERSION_MATCH=1
+                else
+                        CHRONY_EXPORTER_VERSION_MATCH=0
+                fi
+        else
+                CHRONY_EXPORTER_VERSION_SCRAPE=0
+        fi
 fi
 
 ### conntrack_exporter
 if [ -f /usr/local/bin/conntrack_exporter ]; then
+	PRINT=1
+
         ### Get versions
-	CONNTRACK_VERSION="0.3.1"
+	CONNTRACK_EXPORTER_VERSION="0.3.1"
         if [ "$?" -ne "0" ] ; then PROBLEM_COUNT=$((PROBLEM_COUNT + 1)); fi
-	CONNTRACK_VERSION_LATEST=$(curl -s https://api.github.com/repos/hiveco/conntrack_exporter/releases/latest | grep '"tag_name"' | tr -d '"' | awk '{print $NF}' | sed -r 's/[v,]//gi')
+	CONNTRACK_EXPORTER_VERSION_LATEST=$(curl -s https://api.github.com/repos/hiveco/conntrack_exporter/releases/latest | grep '"tag_name"' | tr -d '"' | awk '{print $NF}' | sed -r 's/[v,]//gi')
 	if [ "$?" -ne "0" ] ; then PROBLEM_COUNT=$((PROBLEM_COUNT + 1)); fi
         if [ "$?" -ne "0" ] ; then PROBLEM_COUNT=$((PROBLEM_COUNT + 1)); fi
-
         ### Checks and print versions
-        if [ "$(echo "$CONNTRACK_VERSION" | grep -c -E '[0-9]{1,4}\.[0-9]{1,4}\.{1,4}')" -eq "1" ] && [ "$(echo "$CONNTRACK_VERSION_LATEST" | grep -c -E '[0-9]{1,4}\.[0-9]{1,4}\.{1,4}')" -eq "1" ] ; then
-                CONNTRACK_VERSION_SCRAPE=1
-                echo "# HELP version_comparison_conntrack_exporter Check conntrack_exporter binary version and latest version on repo project, 1 equals, 0 not equals"
-                echo "# TYPE version_comparison_conntrack_exporter gauge"
-                if [ "$CONNTRACK_VERSION"  == "$CONNTRACK_VERSION_LATEST" ]; then
-                        echo "version_comparison_conntrack_exporter{installed=\"$CONNTRACK_VERSION\",latest=\"$CONNTRACK_VERSION_LATEST\"} 1"
+        if [ "$(echo "$CONNTRACK_EXPORTER_VERSION" | grep -c -E '[0-9]{1,4}\.[0-9]{1,4}\.{1,4}')" -eq "1" ] && [ "$(echo "$CONNTRACK_EXPORTER_VERSION_LATEST" | grep -c -E '[0-9]{1,4}\.[0-9]{1,4}\.{1,4}')" -eq "1" ] ; then
+                CONNTRACK_EXPORTER_VERSION_SCRAPE=1
+                if [ "$CONNTRACK_EXPORTER_VERSION"  == "$CONNTRACK_EXPORTER_VERSION_LATEST" ]; then
+                        CONNTRACK_EXPORTER_VERSION_MATCH=1
                 else
-                        echo "version_comparison_conntrack_exporter{installed=\"$CONNTRACK_VERSION\",latest=\"$CONNTRACK_VERSION_LATEST\"} 0"
+                        CONNTRACK_EXPORTER_VERSION_MATCH=0
                 fi
         else
-                CONNTRACK_VERSION_SCRAPE=0
+                CONNTRACK_EXPORTER_VERSION_SCRAPE=0
         fi
-
-        ### Print scrape result
-        echo "# HELP version_comparison_conntrack_exporter_scrape Check if versions were found 1 ok, 0 problem"
-        echo "# TYPE version_comparison_conntrack_exporter_scrape gauge"
-        echo "version_comparison_conntrack_exporter_scrape $CONNTRACK_VERSION_SCRAPE"
 fi
 
 ### blackbox_exporter
 if [ -f /usr/local/bin/blackbox_exporter ]; then
+	PRINT=1
+
         ### Get versions
-	BLACKBOX_VERSION=$(/usr/local/bin/blackbox_exporter --version | head -1| awk '{print $3}')
+	BLACKBOX_EXPORTER_VERSION=$(/usr/local/bin/blackbox_exporter --version | head -1| awk '{print $3}')
         if [ "$?" -ne "0" ] ; then PROBLEM_COUNT=$((PROBLEM_COUNT + 1)); fi
-	BLACKBOX_VERSION_LATEST=$(curl -s https://api.github.com/repos/prometheus/blackbox_exporter/releases/latest| grep '"tag_name"' | tr -d '"' | awk '{print $NF}' | sed -r 's/[v,]//gi')
+	BLACKBOX_EXPORTER_VERSION_LATEST=$(curl -s https://api.github.com/repos/prometheus/blackbox_exporter/releases/latest| grep '"tag_name"' | tr -d '"' | awk '{print $NF}' | sed -r 's/[v,]//gi')
 	if [ "$?" -ne "0" ] ; then PROBLEM_COUNT=$((PROBLEM_COUNT + 1)); fi
 
-	### Checks and print versions
-        if [ "$(echo "$BLACKBOX_VERSION" | grep -c -E '[0-9]{1,4}\.[0-9]{1,4}\.{1,4}')" -eq "1" ] && [ "$(echo "$BLACKBOX_VERSION_LATEST" | grep -c -E '[0-9]{1,4}\.[0-9]{1,4}\.{1,4}')" -eq "1" ] ; then
-                BLACKBOX_VERSION_SCRAPE=1
-                echo "# HELP version_comparison_blackbox_exporter Check blackbox_exporter binary version and latest version on repo project, 1 equals, 0 not equals"
-                echo "# TYPE version_comparison_blackbox_exporter gauge"
-                if [ "$BLACKBOX_VERSION"  == "$BLACKBOX_VERSION_LATEST" ]; then
-                        echo "version_comparison_blackbox_exporter{installed=\"$BLACKBOX_VERSION\",latest=\"$BLACKBOX_VERSION_LATEST\"} 1"
+        ### Checks and print versions
+        if [ "$(echo "$BLACKBOX_EXPORTER_VERSION" | grep -c -E '[0-9]{1,4}\.[0-9]{1,4}\.{1,4}')" -eq "1" ] && [ "$(echo "$BLACKBOX_EXPORTER_VERSION_LATEST" | grep -c -E '[0-9]{1,4}\.[0-9]{1,4}\.{1,4}')" -eq "1" ] ; then
+                BLACKBOX_EXPORTER_VERSION_SCRAPE=1
+                if [ "$BLACKBOX_EXPORTER_VERSION"  == "$BLACKBOX_EXPORTER_VERSION_LATEST" ]; then
+                        BLACKBOX_EXPORTER_VERSION_MATCH=1
                 else
-                        echo "version_comparison_blackbox_exporter{installed=\"$BLACKBOX_VERSION\",latest=\"$BLACKBOX_VERSION_LATEST\"} 0"
+                        BLACKBOX_EXPORTER_VERSION_MATCH=0
                 fi
         else
-                BLACKBOX_VERSION_SCRAPE=0
+                BLACKBOX_EXPORTER_VERSION_SCRAPE=0
         fi
-
-        ### Print scrape result
-        echo "# HELP version_comparison_blackbox_exporter_scrape Check if versions were found 1 ok, 0 problem"
-        echo "# TYPE version_comparison_blackbox_exporter_scrape gauge"
-        echo "version_comparison_blackbox_exporter_scrape $BLACKBOX_VERSION_SCRAPE"
 fi
 
 ### keepalived_exporter
 if [ -f /usr/bin/keepalived_exporter ]; then
+	PRINT=1
+
         ### Get versions
-	KEEPALIVED_VERSION=$(/usr/bin/keepalived_exporter -version  |& awk '{print $2}')
+	KEEPALIVED_EXPORTER_VERSION=$(/usr/bin/keepalived_exporter -version  |& awk '{print $2}')
         if [ "$?" -ne "0" ] ; then PROBLEM_COUNT=$((PROBLEM_COUNT + 1)); fi
-	KEEPALIVED_VERSION_LATEST=$(curl -s https://api.github.com/repos/gen2brain/keepalived_exporter/releases/latest| grep '"tag_name"' | tr -d '"' | awk '{print $NF}' | sed -r 's/[v,]//gi')
-	#KEEPALIVED_VERSION_LATEST=$(curl -s https://api.github.com/repos/mehdy/keepalived-exporter/releases/latest| grep '"tag_name"' | tr -d '"' | awk '{print $NF}' | sed -r 's/[v,]//gi')
+	KEEPALIVED_EXPORTER_VERSION_LATEST=$(curl -s https://api.github.com/repos/gen2brain/keepalived_exporter/releases/latest| grep '"tag_name"' | tr -d '"' | awk '{print $NF}' | sed -r 's/[v,]//gi')
+	#KEEPALIVED_EXPORTER_VERSION_LATEST=$(curl -s https://api.github.com/repos/mehdy/keepalived-exporter/releases/latest| grep '"tag_name"' | tr -d '"' | awk '{print $NF}' | sed -r 's/[v,]//gi')
 	if [ "$?" -ne "0" ] ; then PROBLEM_COUNT=$((PROBLEM_COUNT + 1)); fi
+
         ### Checks and print versions
-        if [ "$(echo "$KEEPALIVED_VERSION" | grep -c -E '[0-9]{1,4}\.[0-9]{1,4}\.{1,4}')" -eq "1" ] && [ "$(echo "$KEEPALIVED_VERSION_LATEST" | grep -c -E '[0-9]{1,4}\.[0-9]{1,4}\.{1,4}')" -eq "1" ] ; then
-                KEEPALIVED_VERSION_SCRAPE=1
-                echo "# HELP version_comparison_keepalived_exporter Check keepalived_exporter binary version and latest version on repo project, 1 equals, 0 not equals"
-                echo "# TYPE version_comparison_keepalived_exporter gauge"
-                if [ "$KEEPALIVED_VERSION"  == "$KEEPALIVED_VERSION_LATEST" ]; then
-                        echo "version_comparison_keepalived_exporter{installed=\"$KEEPALIVED_VERSION\",latest=\"$KEEPALIVED_VERSION_LATEST\"} 1"
+        if [ "$(echo "$KEEPALIVED_EXPORTER_VERSION" | grep -c -E '[0-9]{1,4}\.[0-9]{1,4}\.{1,4}')" -eq "1" ] && [ "$(echo "$KEEPALIVED_EXPORTER_VERSION_LATEST" | grep -c -E '[0-9]{1,4}\.[0-9]{1,4}\.{1,4}')" -eq "1" ] ; then
+                KEEPALIVED_EXPORTER_VERSION_SCRAPE=1
+                if [ "$KEEPALIVED_EXPORTER_VERSION"  == "$KEEPALIVED_EXPORTER_VERSION_LATEST" ]; then
+                        KEEPALIVED_EXPORTER_VERSION_MATCH=1
                 else
-                        echo "version_comparison_keepalived_exporter{installed=\"$KEEPALIVED_VERSION\",latest=\"$KEEPALIVED_VERSION_LATEST\"} 0"
+                        KEEPALIVED_EXPORTER_VERSION_MATCH=0
                 fi
         else
-                KEEPALIVED_VERSION_SCRAPE=0
+                KEEPALIVED_EXPORTER_VERSION_SCRAPE=0
         fi
-
-        ### Print scrape result
-        echo "# HELP version_comparison_keepalived_exporter_scrape Check if versions were found 1 ok, 0 problem"
-        echo "# TYPE version_comparison_keepalived_exporter_scrape gauge"
-        echo "version_comparison_keepalived_exporter_scrape $KEEPALIVED_VERSION_SCRAPE"
 fi
-
 
 ### fluentbit
 if [ -f /opt/fluent-bit/bin/fluent-bit ]; then
+	PRINT=1
+
         ### Get versions
 	FLUENTBIT_VERSION=$(/opt/fluent-bit/bin/fluent-bit --version | head -1| awk '{print $3}' | sed 's/v//')
         if [ "$?" -ne "0" ] ; then PROBLEM_COUNT=$((PROBLEM_COUNT + 1)); fi
 	FLUENTBIT_VERSION_LATEST=$(curl -s https://api.github.com/repos/fluent/fluent-bit/releases/latest| grep '"tag_name"' | tr -d '"' | awk '{print $NF}' | sed -r 's/[v,]//gi')
 	if [ "$?" -ne "0" ] ; then PROBLEM_COUNT=$((PROBLEM_COUNT + 1)); fi
 
-	### Checks and print versions
+        ### Checks and print versions
         if [ "$(echo "$FLUENTBIT_VERSION" | grep -c -E '[0-9]{1,4}\.[0-9]{1,4}\.{1,4}')" -eq "1" ] && [ "$(echo "$FLUENTBIT_VERSION_LATEST" | grep -c -E '[0-9]{1,4}\.[0-9]{1,4}\.{1,4}')" -eq "1" ] ; then
                 FLUENTBIT_VERSION_SCRAPE=1
-                echo "# HELP version_comparison_fluentbit Check fluentbit binary version and latest version on repo project, 1 equals, 0 not equals"
-                echo "# TYPE version_comparison_fluentbit gauge"
                 if [ "$FLUENTBIT_VERSION"  == "$FLUENTBIT_VERSION_LATEST" ]; then
-                        echo "version_comparison_fluentbit{installed=\"$FLUENTBIT_VERSION\",latest=\"$FLUENTBIT_VERSION_LATEST\"} 1"
+                        FLUENTBIT_VERSION_MATCH=1
                 else
-                        echo "version_comparison_fluentbit{installed=\"$FLUENTBIT_VERSION\",latest=\"$FLUENTBIT_VERSION_LATEST\"} 0"
+                        FLUENTBIT_VERSION_MATCH=0
                 fi
         else
                 FLUENTBIT_VERSION_SCRAPE=0
         fi
-
-        ### Print scrape result
-        echo "# HELP version_comparison_fluentbit_scrape Check if versions were found 1 ok, 0 problem"
-        echo "# TYPE version_comparison_fluentbit_scrape gauge"
-        echo "version_comparison_fluentbit_scrape $FLUENTBIT_VERSION_SCRAPE"
 fi
 
 ### cadvisor
 if [ -f /opt/cadvisor/cadvisor ]; then
+	PRINT=1
+
         ### Get versions
 	CADVISOR_VERSION=$(/opt/cadvisor/cadvisor --version | head -1| awk '{print $3}' | sed 's/v//')
         if [ "$?" -ne "0" ] ; then PROBLEM_COUNT=$((PROBLEM_COUNT + 1)); fi
 	CADVISOR_VERSION_LATEST=$(curl -s https://api.github.com/repos/google/cadvisor/releases/latest| grep '"tag_name"' | tr -d '"' | awk '{print $NF}' | sed -r 's/[v,]//gi')
 	if [ "$?" -ne "0" ] ; then PROBLEM_COUNT=$((PROBLEM_COUNT + 1)); fi
 
-        ### Checks and print versions
+	        ### Checks and print versions
         if [ "$(echo "$CADVISOR_VERSION" | grep -c -E '[0-9]{1,4}\.[0-9]{1,4}\.{1,4}')" -eq "1" ] && [ "$(echo "$CADVISOR_VERSION_LATEST" | grep -c -E '[0-9]{1,4}\.[0-9]{1,4}\.{1,4}')" -eq "1" ] ; then
                 CADVISOR_VERSION_SCRAPE=1
-                echo "# HELP version_comparison_cadvisor Check cadvisor binary version and latest version on repo project, 1 equals, 0 not equals"
-                echo "# TYPE version_comparison_cadvisor gauge"
                 if [ "$CADVISOR_VERSION"  == "$CADVISOR_VERSION_LATEST" ]; then
-                        echo "version_comparison_cadvisor{installed=\"$CADVISOR_VERSION\",latest=\"$CADVISOR_VERSION_LATEST\"} 1"
+                        CADVISOR_VERSION_MATCH=1
                 else
-                        echo "version_comparison_cadvisor{installed=\"$CADVISOR_VERSION\",latest=\"$CADVISOR_VERSION_LATEST\"} 0"
+                        CADVISOR_VERSION_MATCH=0
                 fi
         else
                 CADVISOR_VERSION_SCRAPE=0
         fi
-
-        ### Print scrape result
-        echo "# HELP version_comparison_cadvisor_scrape Check if versions were found 1 ok, 0 problem"
-        echo "# TYPE version_comparison_cadvisor_scrape gauge"
-        echo "version_comparison_cadvisor_scrape $CADVISOR_VERSION_SCRAPE"
 fi
 
 ### consul
 if [ -f /usr/bin/consul ]; then
+	PRINT=1
+
         ### Get versions
 	CONSUL_VERSION=$(/usr/bin/consul --version | head -1| awk '{print $2}' | sed 's/v//')
         if [ "$?" -ne "0" ] ; then PROBLEM_COUNT=$((PROBLEM_COUNT + 1)); fi
@@ -230,25 +195,20 @@ if [ -f /usr/bin/consul ]; then
         ### Checks and print versions
         if [ "$(echo "$CONSUL_VERSION" | grep -c -E '[0-9]{1,4}\.[0-9]{1,4}\.{1,4}')" -eq "1" ] && [ "$(echo "$CONSUL_VERSION_LATEST" | grep -c -E '[0-9]{1,4}\.[0-9]{1,4}\.{1,4}')" -eq "1" ] ; then
                 CONSUL_VERSION_SCRAPE=1
-                echo "# HELP version_comparison_consul Check consul binary version and latest version on repo project, 1 equals, 0 not equals"
-                echo "# TYPE version_comparison_consul gauge"
                 if [ "$CONSUL_VERSION"  == "$CONSUL_VERSION_LATEST" ]; then
-                        echo "version_comparison_consul{installed=\"$CONSUL_VERSION\",latest=\"$CONSUL_VERSION_LATEST\"} 1"
+                        CONSUL_VERSION_MATCH=1
                 else
-                        echo "version_comparison_consul{installed=\"$CONSUL_VERSION\",latest=\"$CONSUL_VERSION_LATEST\"} 0"
+                        CONSUL_VERSION_MATCH=0
                 fi
         else
                 CONSUL_VERSION_SCRAPE=0
         fi
-
-        ### Print scrape result
-        echo "# HELP version_comparison_consul_scrape Check if versions were found 1 ok, 0 problem"
-        echo "# TYPE version_comparison_consul_scrape gauge"
-        echo "version_comparison_consul_scrape $CONSUL_VERSION_SCRAPE"
 fi
 
 ### snoopy
 if [ -f /usr/sbin/snoopyctl ]; then
+	PRINT=1
+
         ### Get versions
 	SNOOPY_VERSION=$(/usr/sbin/snoopyctl version | head -1| awk '{print $NF}')
         if [ "$?" -ne "0" ] ; then PROBLEM_COUNT=$((PROBLEM_COUNT + 1)); fi
@@ -258,26 +218,21 @@ if [ -f /usr/sbin/snoopyctl ]; then
         ### Checks and print versions
         if [ "$(echo "$SNOOPY_VERSION" | grep -c -E '[0-9]{1,4}\.[0-9]{1,4}\.{1,4}')" -eq "1" ] && [ "$(echo "$SNOOPY_VERSION_LATEST" | grep -c -E '[0-9]{1,4}\.[0-9]{1,4}\.{1,4}')" -eq "1" ] ; then
                 SNOOPY_VERSION_SCRAPE=1
-                echo "# HELP version_comparison_snoopy Check snoopy binary version and latest version on repo project, 1 equals, 0 not equals"
-                echo "# TYPE version_comparison_snoopy gauge"
                 if [ "$SNOOPY_VERSION"  == "$SNOOPY_VERSION_LATEST" ]; then
-                        echo "version_comparison_snoopy{installed=\"$SNOOPY_VERSION\",latest=\"$SNOOPY_VERSION_LATEST\"} 1"
+                        SNOOPY_VERSION_MATCH=1
                 else
-                        echo "version_comparison_snoopy{installed=\"$SNOOPY_VERSION\",latest=\"$SNOOPY_VERSION_LATEST\"} 0"
+                        SNOOPY_VERSION_MATCH=0
                 fi
         else
                 SNOOPY_VERSION_SCRAPE=0
         fi
-
-        ### Print scrape result
-        echo "# HELP version_comparison_snoopy_scrape Check if versions were found 1 ok, 0 problem"
-        echo "# TYPE version_comparison_snoopy_scrape gauge"
-        echo "version_comparison_snoopy_scrape $SNOOPY_VERSION_SCRAPE"
 fi
 
 ### traefikee in docker
 if [ -f /usr/bin/docker ]; then
 	if [ "$(docker ps -a | grep -c traefik_proxy)" -eq "1" ]; then
+		PRINT=1
+
 		### Get versions
 		TRAEFIKEE_VERSION=$(docker exec -it traefik_proxy sh -c "traefikee version" | head -1| awk '{print $2}' | sed 's/v//')
 	        if [ "$?" -ne "0" ] ; then PROBLEM_COUNT=$((PROBLEM_COUNT + 1)); fi
@@ -285,24 +240,45 @@ if [ -f /usr/bin/docker ]; then
 		if [ "$?" -ne "0" ] ; then PROBLEM_COUNT=$((PROBLEM_COUNT + 1)); fi
 
 		### Checks and print versions
-		if [ "$(echo "$TRAEFIKEE_VERSION" | grep -c -E '[0-9]{1,4}\.[0-9]{1,4}\.{1,4}')" -eq "1" ] && [ "$(echo "$TRAEFIKEE_VERSION_LATEST" | grep -c -E '[0-9]{1,4}\.[0-9]{1,4}\.{1,4}')" -eq "1" ] ; then
-			TRAEFIKEE_VERSION_SCRAPE=1
-			echo "# HELP version_comparison_traefikee Check traefikee binary version and latest version on repo project, 1 equals, 0 not equals"
-			echo "# TYPE version_comparison_traefikee gauge"
-			if [ "$TRAEFIKEE_VERSION"  == "$TRAEFIKEE_VERSION_LATEST" ]; then
-				echo "version_comparison_traefikee{installed=\"$TRAEFIKEE_VERSION\",latest=\"$TRAEFIKEE_VERSION_LATEST\"} 1"
-			else
-				echo "version_comparison_traefikee{installed=\"$TRAEFIKEE_VERSION\",latest=\"$TRAEFIKEE_VERSION_LATEST\"} 0"
-			fi
-		else
-			TRAEFIKEE_VERSION_SCRAPE=0
-		fi
-
-		### Print scrape result
-		echo "# HELP version_comparison_traefikee_scrape Check if versions were found 1 ok, 0 problem"
-		echo "# TYPE version_comparison_traefikee_scrape gauge"
-		echo "version_comparison_traefikee_scrape $TRAEFIKEE_VERSION_SCRAPE"
+	        if [ "$(echo "$TRAEFIKEE_VERSION" | grep -c -E '[0-9]{1,4}\.[0-9]{1,4}\.{1,4}')" -eq "1" ] && [ "$(echo "$TRAEFIKEE_VERSION_LATEST" | grep -c -E '[0-9]{1,4}\.[0-9]{1,4}\.{1,4}')" -eq "1" ] ; then
+	                TRAEFIKEE_VERSION_SCRAPE=1
+	                if [ "$TRAEFIKEE_VERSION"  == "$TRAEFIKEE_VERSION_LATEST" ]; then
+	                        TRAEFIKEE_VERSION_MATCH=1
+	                else
+	                        TRAEFIKEE_VERSION_MATCH=0
+	                fi
+	        else
+	                TRAEFIKEE_VERSION_SCRAPE=0
+	        fi
 	fi
+fi
+
+if [ "$PRINT" -eq "1" ]; then
+  echo "# HELP version_comparison Check binary version and latest version on repo project, 1 equals, 0 not equals"
+  echo "# TYPE version_comparison gauge"
+  if [ -n "$NODE_EXPORTER_VERSION_MATCH" ]; then echo "version_comparison{application=\"node_exporter\",installed=\"$NODE_EXPORTER_VERSION\",latest=\"$NODE_EXPORTER_VERSION_LATEST\"} $NODE_EXPORTER_VERSION_MATCH"; fi
+  if [ -n "$CHRONY_EXPORTER_VERSION_MATCH" ]; then echo "version_comparison{application=\"chrony_exporter\",installed=\"$CHRONY_EXPORTER_VERSION\",latest=\"$CHRONY_EXPORTER_VERSION_LATEST\"} $CHRONY_EXPORTER_VERSION_MATCH"; fi
+  if [ -n "$CONNTRACK_EXPORTER_VERSION_MATCH" ]; then echo "version_comparison{application=\"conntrack_exporter\",installed=\"$CONNTRACK_EXPORTER_VERSION\",latest=\"$CONNTRACK_EXPORTER_VERSION_LATEST\"} $CONNTRACK_EXPORTER_VERSION_MATCH"; fi
+  if [ -n "$BLACKBOX_EXPORTER_VERSION_MATCH" ]; then echo "version_comparison{application=\"blackbox_exporter\",installed=\"$BLACKBOX_EXPORTER_VERSION\",latest=\"$BLACKBOX_EXPORTER_VERSION_LATEST\"} $BLACKBOX_EXPORTER_VERSION_MATCH"; fi
+  if [ -n "$KEEPALIVED_EXPORTER_VERSION_MATCH" ]; then echo "version_comparison{application=\"keepalived_exporter\",installed=\"$KEEPALIVED_EXPORTER_VERSION\",latest=\"$KEEPALIVED_EXPORTER_VERSION_LATEST\"} $KEEPALIVED_EXPORTER_VERSION_MATCH"; fi
+  if [ -n "$FLUENTBIT_VERSION_MATCH" ]; then echo "version_comparison{application=\"fluentbit\",installed=\"$FLUENTBIT_VERSION\",latest=\"$FLUENTBIT_VERSION_LATEST\"} $FLUENTBIT_VERSION_MATCH"; fi
+  if [ -n "$CADVISOR_VERSION_MATCH" ]; then echo "version_comparison{application=\"cadvisor\",installed=\"$CADVISOR_VERSION\",latest=\"$CADVISOR_VERSION_LATEST\"} $CADVISOR_VERSION_MATCH"; fi
+  if [ -n "$CONSUL_VERSION_MATCH" ]; then echo "version_comparison{application=\"consul\",installed=\"$CONSUL_VERSION\",latest=\"$CONSUL_VERSION_LATEST\"} $CONSUL_VERSION_MATCH"; fi
+  if [ -n "$SNOOPY_VERSION_MATCH" ]; then echo "version_comparison{application=\"snoopy\",installed=\"$SNOOPY_VERSION\",latest=\"$SNOOPY_VERSION_LATEST\"} $SNOOPY_VERSION_MATCH"; fi
+  if [ -n "$TRAEFIKEE_VERSION_MATCH" ]; then echo "version_comparison{application=\"traefikee\",installed=\"$TRAEFIKEE_VERSION\",latest=\"$TRAEFIKEE_VERSION_LATEST\"} $TRAEFIKEE_VERSION_MATCH"; fi
+
+  echo "# HELP version_comparison_scrape Check if versions were found 1 ok, 0 problem"
+  echo "# TYPE version_comparison_scrape gauge"
+  if [ -n "$NODE_EXPORTER_VERSION_SCRAPE" ]; then echo "version_comparison_scrape{application=\"node_exporter\"} $NODE_EXPORTER_VERSION_SCRAPE"; fi
+  if [ -n "$CHRONY_EXPORTER_VERSION_SCRAPE" ]; then echo "version_comparison_scrape{application=\"chrony_exporter\"} $CHRONY_EXPORTER_VERSION_SCRAPE"; fi
+  if [ -n "$CONNTRACK_EXPORTER_VERSION_SCRAPE" ]; then echo "version_comparison_scrape{application=\"conntrack_exporter\"} $CONNTRACK_EXPORTER_VERSION_SCRAPE"; fi
+  if [ -n "$BLACKBOX_EXPORTER_VERSION_SCRAPE" ]; then echo "version_comparison_scrape{application=\"blackbox_exporter\"} $BLACKBOX_EXPORTER_VERSION_SCRAPE"; fi
+  if [ -n "$KEEPALIVED_EXPORTER_VERSION_SCRAPE" ]; then echo "version_comparison_scrape{application=\"keepalived_exporter\"} $KEEPALIVED_EXPORTER_VERSION_SCRAPE"; fi
+  if [ -n "$FLUENTBIT_VERSION_SCRAPE" ]; then echo "version_comparison_scrape{application=\"fluentbit\"} $FLUENTBIT_VERSION_SCRAPE"; fi
+  if [ -n "$CADVISOR_VERSION_SCRAPE" ]; then echo "version_comparison_scrape{application=\"cadvisor\"} $CADVISOR_VERSION_SCRAPE"; fi
+  if [ -n "$CONSUL_VERSION_SCRAPE" ]; then echo "version_comparison_scrape{application=\"consul\"} $CONSUL_VERSION_SCRAPE"; fi
+  if [ -n "$SNOOPY_VERSION_SCRAPE" ]; then echo "version_comparison_scrape{application=\"snoopy\"} $SNOOPY_VERSION_SCRAPE"; fi
+  if [ -n "$TRAEFIKEE_VERSION_SCRAPE" ]; then echo "version_comparison_scrape{application=\"traefikee\"} $TRAEFIKEE_VERSION_SCRAPE"; fi
 fi
 
 
