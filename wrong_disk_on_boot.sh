@@ -21,7 +21,7 @@ fi
 
 echo "# HELP node_wrong_disk_on_boot Check if a letter on boot disk"
 echo "# TYPE node_wrong_disk_on_boot gauge"
-if [ -z "$PRIMARY_DISK_NAME"]; then
+if [ -z "$PRIMARY_DISK_NAME" ]; then
 	echo node_wrong_disk_on_boot $PRIMARY_DISK_CODE
 else
 	echo "node_wrong_disk_on_boot{primary_disk=\"$PRIMARY_DISK_NAME\"} $PRIMARY_DISK_CODE"
