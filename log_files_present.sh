@@ -1,7 +1,7 @@
 #!/bin/bash
 
 LOG_DIR="/var/log"
-LOG_FILES=$(find "$LOG_DIR" -type f \( -name "*.log" -o -name "syslog" \) | grep -v ".[0-9].log" | sort -u)
+LOG_FILES=$(find "$LOG_DIR" -type f \( -name "*.log" -o -name "syslog" -o -name "btmp" -o -name "wtmp" -o -name "lastlog" \) | grep -v ".[0-9].log" | sort -u)
 
 # Check if any log files were found
 if ! [ -z "$LOG_FILES" ]; then
