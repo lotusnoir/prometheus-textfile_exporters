@@ -3,6 +3,9 @@
 # Input file (modify if needed)
 CONFIG_FILE="/opt/consul.d/consul.hcl"
 
+if [ ! -e "$CONFIG_FILE" ]; then 
+  exit 1
+fi
 # Output file for node_exporter textfile collector
 OUTPUT_FILE="/tmp/consul_meta.prom"
 
