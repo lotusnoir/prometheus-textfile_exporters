@@ -8,6 +8,6 @@ if [ -e "/usr/sbin/tune2fs" ]; then
   timestamp=$(date -d "$date_string" +%s)
 
   echo "# HELP vm_creation_time_seconds Return timestamp since vm was created"
-  echo "# TYPE vm_creation_time_seconds time"
+  echo "# TYPE vm_creation_time_seconds gauge"
   echo "vm_creation_time_seconds{date=\"$date_string\"} $timestamp"
 fi
