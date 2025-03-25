@@ -4,7 +4,7 @@
 CONFIG_FILE="/opt/consul.d/consul.hcl"
 
 # Output file for node_exporter textfile collector
-OUTPUT_FILE="/var/lib/node_exporter/consul_meta.prom"
+OUTPUT_FILE="/tmp/consul_meta.prom"
 
 # Clear previous output
 > "$OUTPUT_FILE"
