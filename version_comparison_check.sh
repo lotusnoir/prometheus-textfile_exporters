@@ -228,16 +228,13 @@ if [ "$PRINT" -eq "1" ]; then
           if [ "${scrape_map[$app]}" -ne 1 ]; then
               all_ok=0
           fi
-      else
-          # If value is empty, consider it a failure
-          all_ok=0
       fi
   done
 
   # Add a summary metric
   echo "# HELP version_comparison_all_scrapes_ok Check if all components scraped successfully"
   echo "# TYPE version_comparison_all_scrapes_ok gauge"
-  echo "version_comparison_all_scrapes_ok{application=\"$app\", date=\"$current_date\"} $all_ok"
+  echo "version_comparison_all_scrapes_ok{date=\"$current_date\"} $all_ok"
 
 fi
 
