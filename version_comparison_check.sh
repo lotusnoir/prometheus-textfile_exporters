@@ -185,23 +185,9 @@ if [ "$PRINT" -eq "1" ]; then
   #####################################
   echo "# HELP version_comparison_major Check binary version and latest version only keeping the major version on repo project, 1 equals, 0 not equals"
   echo "# TYPE version_comparison_major gauge"
-  declare -A major_map=(
-    ["node_exporter"]="NODE_EXPORTER"
-    ["chrony_exporter"]="CHRONY_EXPORTER"
-    ["conntrack_exporter"]="CONNTRACK_EXPORTER"
-    ["blackbox_exporter"]="BLACKBOX_EXPORTER"
-    ["rsyslog_exporter"]="RSYSLOG_EXPORTER"
-    ["keepalived_exporter"]="KEEPALIVED_EXPORTER"
-    ["fluentbit"]="FLUENTBIT"
-    ["cadvisor"]="CADVISOR"
-    ["consul"]="CONSUL"
-    ["consul_exporter"]="CONSUL_EXPORTER"
-    ["snoopy"]="SNOOPY"
-    ["traefikee"]="TRAEFIKEE"
-  )  
 
-  for app in "${!major_map[@]}"; do
-    prefix="${major_map[$app]}"
+  for app in "${!version_map[@]}"; do
+    prefix="${version_map[$app]}"
     match_var="${prefix}_VERSION_MAJOR_MATCH"
     installed_var="${prefix}_VERSION_MAJOR"
     latest_var="${prefix}_VERSION_LATEST_MAJOR"
