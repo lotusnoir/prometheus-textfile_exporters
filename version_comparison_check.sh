@@ -51,6 +51,9 @@ get_installed_version() {
         "traefikee")
             docker exec -it traefik_proxy sh -c "traefikee version" | head -1 | awk '{print $2}' | sed 's/v//'
             ;;
+        "squid_exporter") 
+            "$binary_path" --version 2>&1 | grep -oP 'version \K[0-9.]+' | head -1
+            ;;
         *)
             "$binary_path" --version | head -1 | awk '{print $3}'
             ;;
@@ -139,6 +142,7 @@ declare -A apps=(
     ["consul_exporter"]="/usr/local/bin/consul_exporter https://api.github.com/repos/prometheus/consul_exporter/releases/latest"
     ["snoopy"]="/usr/sbin/snoopyctl https://api.github.com/repos/a2o/snoopy/releases/latest"
     ["traefikee"]="none https://doc.traefik.io/traefik-enterprise/kb/release-notes/"
+    ["squid_exporter"]="/usr/local/bin/squid-exporter https://api.github.com/repos/boynux/squid-exporter/releases/latest"
 )
 
 # Process each application
@@ -169,6 +173,7 @@ if [ "$PRINT" -eq "1" ]; then
     ["consul_exporter"]="CONSUL_EXPORTER"
     ["snoopy"]="SNOOPY"
     ["traefikee"]="TRAEFIKEE"
+    ["squid_exporter"]="SQUID_EXPORTER"
   )  
 
   for app in "${!version_map[@]}"; do
@@ -213,6 +218,7 @@ if [ "$PRINT" -eq "1" ]; then
       ["consul_exporter"]="$CONSUL_EXPORTER_VERSION_SCRAPE"
       ["snoopy"]="$SNOOPY_VERSION_SCRAPE"
       ["traefikee"]="$TRAEFIKEE_VERSION_SCRAPE"
+      ["squid_exporter"]="$SQUID_EXPORTER_VERSION_SCRAPE"
   )
 
   current_date=$(date +%s) # Unix timestamp format
