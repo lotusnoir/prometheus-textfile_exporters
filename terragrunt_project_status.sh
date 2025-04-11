@@ -14,7 +14,7 @@ function terragrunt_check_projects_status () {
     for path in ${ALL_TERRAGRUNT_PROJECTS_PATH}; do
         cd "${path}" || return
         short_path="${path#*$REMOVE_PATH_PREFIX}"
-        terragrunt plan -detailed-exitcode > /dev/null 2>&1
+        terragrunt plan -input=false -detailed-exitcode > /dev/null 2>&1
         CODE=$?
         echo "terragrunt_project_status{path=\"$short_path\"} $CODE"
     done
