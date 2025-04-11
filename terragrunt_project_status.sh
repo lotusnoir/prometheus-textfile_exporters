@@ -16,7 +16,7 @@ function terragrunt_check_projects_status () {
         short_path="${path#*$REMOVE_PATH_PREFIX}"
         terragrunt plan -detailed-exitcode > /dev/null 2>&1
         CODE=$?
-        echo "terragrunt_project_status{path="$short_path"} $CODE"
+        echo "terragrunt_project_status{path=\"$short_path\"} $CODE"
     done
 }
 
