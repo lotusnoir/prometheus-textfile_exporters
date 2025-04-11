@@ -17,6 +17,25 @@ PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 PROBLEM_COUNT=0
 PRINT=0
 
+# Define applications with their paths and repository URLs
+declare -A apps=(
+    ["node_exporter"]="/usr/local/bin/node_exporter https://api.github.com/repos/prometheus/node_exporter/releases/latest"
+    ["chrony_exporter"]="/usr/local/bin/chrony_exporter https://api.github.com/repos/SuperQ/chrony_exporter/releases/latest"
+    ["conntrack_exporter"]="/usr/local/bin/conntrack_exporter https://api.github.com/repos/hiveco/conntrack_exporter/releases/latest"
+    ["blackbox_exporter"]="/usr/local/bin/blackbox_exporter https://api.github.com/repos/prometheus/blackbox_exporter/releases/latest"
+    ["rsyslog_exporter"]="/usr/local/bin/rsyslog_exporter https://api.github.com/repos/prometheus-community/rsyslog_exporter/releases/latest"
+    ["keepalived_exporter"]="/usr/bin/keepalived_exporter https://api.github.com/repos/gen2brain/keepalived_exporter/releases/latest"
+    ["fluentbit"]="/opt/fluent-bit/bin/fluent-bit https://api.github.com/repos/fluent/fluent-bit/releases/latest"
+    ["cadvisor"]="/opt/cadvisor/cadvisor https://api.github.com/repos/google/cadvisor/releases/latest"
+    ["consul"]="/usr/bin/consul https://api.github.com/repos/hashicorp/consul/releases/latest"
+    ["consul_exporter"]="/usr/local/bin/consul_exporter https://api.github.com/repos/prometheus/consul_exporter/releases/latest"
+    ["snoopy"]="/usr/sbin/snoopyctl https://api.github.com/repos/a2o/snoopy/releases/latest"
+    ["traefikee"]="none https://doc.traefik.io/traefik-enterprise/kb/release-notes/"
+    ["squid_exporter"]="/usr/local/bin/squid-exporter https://api.github.com/repos/boynux/squid-exporter/releases/latest"
+    ["systemd_exporter"]="/usr/local/bin/systemd_exporter https://api.github.com/repos/prometheus-community/systemd_exporter/releases/latest"
+    ["process_exporter"]="/usr/local/bin/process_exporter https://api.github.com/repos/ncabatoff/process-exporter/releases/latest"
+    ["redis_exporter"]="/usr/local/bin/redis_exporter https://api.github.com/repos/oliver006/redis_exporter/releases/latest"
+)
 
 ########################################################################
 ### Functions
@@ -34,6 +53,9 @@ get_installed_version() {
             "$binary_path" --version | head -1| awk '{print $2}' | sed 's/v//'
             ;;
         "consul_exporter") 
+            "$binary_path" --version 2>&1 | grep -oP 'version \K[0-9.]+' | head -1
+            ;;
+        "systemd_exporter") 
             "$binary_path" --version 2>&1 | grep -oP 'version \K[0-9.]+' | head -1
             ;;
         "keepalived_exporter")
@@ -128,23 +150,6 @@ process_app() {
 }
 
 ## Main processing
-# Define applications with their paths and repository URLs
-declare -A apps=(
-    ["node_exporter"]="/usr/local/bin/node_exporter https://api.github.com/repos/prometheus/node_exporter/releases/latest"
-    ["chrony_exporter"]="/usr/local/bin/chrony_exporter https://api.github.com/repos/SuperQ/chrony_exporter/releases/latest"
-    ["conntrack_exporter"]="/usr/local/bin/conntrack_exporter https://api.github.com/repos/hiveco/conntrack_exporter/releases/latest"
-    ["blackbox_exporter"]="/usr/local/bin/blackbox_exporter https://api.github.com/repos/prometheus/blackbox_exporter/releases/latest"
-    ["rsyslog_exporter"]="/usr/local/bin/rsyslog_exporter https://api.github.com/repos/prometheus-community/rsyslog_exporter/releases/latest"
-    ["keepalived_exporter"]="/usr/bin/keepalived_exporter https://api.github.com/repos/gen2brain/keepalived_exporter/releases/latest"
-    ["fluentbit"]="/opt/fluent-bit/bin/fluent-bit https://api.github.com/repos/fluent/fluent-bit/releases/latest"
-    ["cadvisor"]="/opt/cadvisor/cadvisor https://api.github.com/repos/google/cadvisor/releases/latest"
-    ["consul"]="/usr/bin/consul https://api.github.com/repos/hashicorp/consul/releases/latest"
-    ["consul_exporter"]="/usr/local/bin/consul_exporter https://api.github.com/repos/prometheus/consul_exporter/releases/latest"
-    ["snoopy"]="/usr/sbin/snoopyctl https://api.github.com/repos/a2o/snoopy/releases/latest"
-    ["traefikee"]="none https://doc.traefik.io/traefik-enterprise/kb/release-notes/"
-    ["squid_exporter"]="/usr/local/bin/squid-exporter https://api.github.com/repos/boynux/squid-exporter/releases/latest"
-)
-
 # Process each application
 for app in "${!apps[@]}"; do
     IFS=' ' read -r path url <<< "${apps[$app]}"
@@ -160,28 +165,12 @@ if [ "$PRINT" -eq "1" ]; then
   #####################################
   echo "# HELP version_comparison Check binary version and latest version on repo project, 1 equals, 0 not equals"
   echo "# TYPE version_comparison gauge"
-  declare -A version_map=(
-    ["node_exporter"]="NODE_EXPORTER"
-    ["chrony_exporter"]="CHRONY_EXPORTER"
-    ["conntrack_exporter"]="CONNTRACK_EXPORTER"
-    ["blackbox_exporter"]="BLACKBOX_EXPORTER"
-    ["rsyslog_exporter"]="RSYSLOG_EXPORTER"
-    ["keepalived_exporter"]="KEEPALIVED_EXPORTER"
-    ["fluentbit"]="FLUENTBIT"
-    ["cadvisor"]="CADVISOR"
-    ["consul"]="CONSUL"
-    ["consul_exporter"]="CONSUL_EXPORTER"
-    ["snoopy"]="SNOOPY"
-    ["traefikee"]="TRAEFIKEE"
-    ["squid_exporter"]="SQUID_EXPORTER"
-  )  
 
-  for app in "${!version_map[@]}"; do
-    prefix="${version_map[$app]}"
+  for app in "${!apps[@]}"; do
+    prefix="${app^^}"
     match_var="${prefix}_VERSION_MATCH"
     installed_var="${prefix}_VERSION"
     latest_var="${prefix}_VERSION_LATEST"
-
     if [ -n "${!match_var}" ]; then
       echo "version_comparison{application=\"$app\",installed=\"${!installed_var}\",latest=\"${!latest_var}\"} ${!match_var}"
     fi
@@ -191,12 +180,11 @@ if [ "$PRINT" -eq "1" ]; then
   echo "# HELP version_comparison_major Check binary version and latest version only keeping the major version on repo project, 1 equals, 0 not equals"
   echo "# TYPE version_comparison_major gauge"
 
-  for app in "${!version_map[@]}"; do
-    prefix="${version_map[$app]}"
+  for app in "${!apps[@]}"; do
+    prefix="${app^^}"
     match_var="${prefix}_VERSION_MAJOR_MATCH"
     installed_var="${prefix}_VERSION_MAJOR"
     latest_var="${prefix}_VERSION_LATEST_MAJOR"
-  
     if [ -n "${!match_var}" ]; then
       echo "version_comparison_major{application=\"$app\",installed=\"${!installed_var}\",latest=\"${!latest_var}\"} ${!match_var}"
     fi
@@ -205,36 +193,23 @@ if [ "$PRINT" -eq "1" ]; then
   #####################################
   echo "# HELP version_comparison_scrape Check if versions were found 1 ok, 0 problem"
   echo "# TYPE version_comparison_scrape gauge"
-  declare -A scrape_map=(
-      ["node_exporter"]="$NODE_EXPORTER_VERSION_SCRAPE"
-      ["chrony_exporter"]="$CHRONY_EXPORTER_VERSION_SCRAPE"
-      ["conntrack_exporter"]="$CONNTRACK_EXPORTER_VERSION_SCRAPE"
-      ["blackbox_exporter"]="$BLACKBOX_EXPORTER_VERSION_SCRAPE"
-      ["rsyslog_exporter"]="$RSYSLOG_EXPORTER_VERSION_SCRAPE"
-      ["keepalived_exporter"]="$KEEPALIVED_EXPORTER_VERSION_SCRAPE"
-      ["fluentbit"]="$FLUENTBIT_VERSION_SCRAPE"
-      ["cadvisor"]="$CADVISOR_VERSION_SCRAPE"
-      ["consul"]="$CONSUL_VERSION_SCRAPE"
-      ["consul_exporter"]="$CONSUL_EXPORTER_VERSION_SCRAPE"
-      ["snoopy"]="$SNOOPY_VERSION_SCRAPE"
-      ["traefikee"]="$TRAEFIKEE_VERSION_SCRAPE"
-      ["squid_exporter"]="$SQUID_EXPORTER_VERSION_SCRAPE"
-  )
 
   current_date=$(date +%s) # Unix timestamp format
   # Initialize all_ok flag
   all_ok=1
 
   # Print metrics and check values
-  for app in "${!scrape_map[@]}"; do
-      if [ -n "${scrape_map[$app]}" ]; then
-          echo "version_comparison_scrape{application=\"$app\"} ${scrape_map[$app]}"
-          
-          # Check if value is not 1
-          if [ "${scrape_map[$app]}" -ne 1 ]; then
-              all_ok=0
-          fi
-      fi
+  for app in "${!apps[@]}"; do
+    prefix="${app^^}"
+    scrape_var="${prefix}_VERSION_SCRAPE"
+    if [ -n "${!scrape_var}" ]; then
+        echo "version_comparison_scrape{application=\"$app\"} ${!scrape_var}"
+        
+        # Check if value is not 1
+        if [ "${!scrape_var}" -ne 1 ]; then
+            all_ok=0
+        fi
+    fi
   done
 
   # Add a summary metric
