@@ -1,9 +1,7 @@
 #!/bin/bash
 
-### ANSIBLE BLOCK
-PROJECT_PATH="/opt/terraform_core/deploy/vsphere/vms"
-REMOVE_PATH_PREFIX="/deploy/vsphere/"
-### ANSIBLE BLOCK
+#PROJECT_PATH="/path/to/terragrunt/projets/"
+#REMOVE_PATH_PREFIX="/deploy/vsphere/"
 
 # Retrieve all the directories with a terragrunt.hcl configuration
 ALL_TERRAGRUNT_PROJECTS_PATH=$(find "$PROJECT_PATH" -name "terragrunt.hcl" -not -path "*terragrunt-cache/*" -execdir pwd \;)
@@ -18,7 +16,7 @@ export REMOVE_PATH_PREFIX
 # Run terragrunt checks in parallel
 printf "%s\n" $ALL_TERRAGRUNT_PROJECTS_PATH | xargs -P 8 -I{} bash -c '
     path="{}"
-    short_path="${path#${REMOVE_PATH_PREFIX}}"
+    short_path="${path#*$REMOVE_PATH_PREFIX}"
     cd "$path" || exit 1
     terragrunt plan -input=false -detailed-exitcode > /dev/null 2>&1
     code=$?
