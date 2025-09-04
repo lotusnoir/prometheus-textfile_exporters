@@ -35,6 +35,7 @@ declare -A apps=(
     ["systemd_exporter"]="/usr/local/bin/systemd_exporter https://api.github.com/repos/prometheus-community/systemd_exporter/releases/latest"
     ["process_exporter"]="/usr/local/bin/process_exporter https://api.github.com/repos/ncabatoff/process-exporter/releases/latest"
     ["redis_exporter"]="/usr/local/bin/redis_exporter https://api.github.com/repos/oliver006/redis_exporter/releases/latest"
+    ["alloy"]="/usr/local/bin/redis_exporter https://api.github.com/repos/grafana/alloy/releases/latest"
 )
 
 ########################################################################
@@ -75,6 +76,9 @@ get_installed_version() {
             ;;
         "squid_exporter") 
             "$binary_path" --version 2>&1 | grep -oP 'version \K[0-9.]+' | head -1
+            ;;
+        "alloy") 
+            "$binary_path" --version | head -1 | awk '{print $3}' | sed 's/v//'
             ;;
         *)
             "$binary_path" --version | head -1 | awk '{print $3}'
