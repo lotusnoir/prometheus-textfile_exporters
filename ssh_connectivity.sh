@@ -16,26 +16,26 @@ if [ -z "$VAULT_TOKEN" ]; then echo "ERROR: VAULT_TOKEN is not set, exiting."; e
 
 export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 
-VSPHERE_SECRET_PATH="kv/data/vsphere"
-VSPHERE_DATA=$(vault kv get -mount=kv -format=json "$VSPHERE_SECRET_PATH")
-VSPHERE_USER=$(echo "$VSPHERE_DATA" | jq -r '.data.data.vsphere_username')
-VSPHERE_PASS=$(echo "$VSPHERE_DATA" | jq -r '.data.data.vsphere_password')
-VSPHERE_SERVER=$(echo "$VSPHERE_DATA" | jq -r '.data.data.vsphere_server')
-
-SSH_SECRET_PATH="kv/data/ssh"
-SSH_DATA=$(vault kv get -mount=kv -format=json "$SSH_SECRET_PATH")
-declare -A SSH_USERS
-SSH_USERS["login1"]="$(echo "$SSH_DATA" | jq -r '.data.data.login1_password')"
-SSH_USERS["login2"]="$(echo "$SSH_DATA" | jq -r '.data.data.login2_password')"
-
-# Various
-MAX_JOBS=20
-SSH_TIMEOUT=30
-SSH_OPTS="-o StrictHostKeyChecking=no -o ConnectTimeout=$SSH_TIMEOUT -o BatchMode=no"
-
-# vsphere select vms names
-INCLUDE_LIST=('^vm-')
-EXCLUDE_LIST=('vm-talos.*' 'vm-windows.*' 'vm-citrix.*')
+#VSPHERE_SECRET_PATH="kv/data/vsphere"
+#VSPHERE_DATA=$(vault kv get -mount=kv -format=json "$VSPHERE_SECRET_PATH")
+#VSPHERE_USER=$(echo "$VSPHERE_DATA" | jq -r '.data.data.vsphere_username')
+#VSPHERE_PASS=$(echo "$VSPHERE_DATA" | jq -r '.data.data.vsphere_password')
+#VSPHERE_SERVER=$(echo "$VSPHERE_DATA" | jq -r '.data.data.vsphere_server')
+#
+#SSH_SECRET_PATH="kv/data/ssh"
+#SSH_DATA=$(vault kv get -mount=kv -format=json "$SSH_SECRET_PATH")
+#declare -A SSH_USERS
+#SSH_USERS["login1"]="$(echo "$SSH_DATA" | jq -r '.data.data.login1_password')"
+#SSH_USERS["login2"]="$(echo "$SSH_DATA" | jq -r '.data.data.login2_password')"
+#
+## Various
+#MAX_JOBS=20
+#SSH_TIMEOUT=30
+#SSH_OPTS="-o StrictHostKeyChecking=no -o ConnectTimeout=$SSH_TIMEOUT -o BatchMode=no"
+#
+## vsphere select vms names
+#INCLUDE_LIST=('^vm-')
+#EXCLUDE_LIST=('vm-talos.*' 'vm-windows.*' 'vm-citrix.*')
 
 
 ############################################################################
