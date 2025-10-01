@@ -24,6 +24,7 @@ export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 ### Env variable with default values
 MAX_JOBS=${MAX_JOBS:-20}   # default parallelism
 DNS_SERVER=${DNS_SERVER:-}
+DNS_DOMAIN=${DNS_DOMAIN:-}
 
 DIG_CMD="dig +short"
 if [ -n "$DNS_SERVER" ]; then
@@ -52,7 +53,6 @@ if [ -z "$VAULT_TOKEN" ]; then echo "ERROR: VAULT_TOKEN is not set, exiting."; e
 #SSH_USER="app-ansible"
 #SSH_USER_PASSWORD=$(echo "$SSH_DATA" | jq -r '.data.data.ssh_password')
 #
-#DNS_DOMAIN=${DNS_DOMAIN:-}
 #SSH_OPTS="-o BatchMode=no -o ConnectTimeout=60 -o StrictHostKeyChecking=no"
 #INCLUDE_LIST=('^vm-')
 #EXCLUDE_LIST=('vm-talos.*') 
