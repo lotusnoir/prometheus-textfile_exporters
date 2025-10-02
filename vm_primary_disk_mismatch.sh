@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
 #===============================================================================
-#         FILE:  check_vm_log_files_stats.sh
+#         FILE:  check_primary_disk.sh
 #
-#        USAGE:  ./check_vm_log_files_stats.sh
+#        USAGE:  ./check_primary_disk.sh
 #
-#  DESCRIPTION:  Export log file metrics (size in KB, last modification age in days)
-#                for Prometheus node_exporter textfile collector.
+#  DESCRIPTION:  Check if the system boot/root disk has the expected device name.
+#                Exposes results in Prometheus node_exporter textfile format.
 #
-#  REQUIREMENTS: find, du, stat, date
-#       AUTHOR:  Philippe
-#      VERSION:  1.6
+#  REQUIREMENTS: awk, df, grep
+#       AUTHOR:  Philippe (Axione)
+#      VERSION:  1.1
 #      CREATED:  2025-10-01
 #===============================================================================
 
@@ -23,62 +23,39 @@ require_root() {
     fi
 }
 
+find_primary_disk() {
+    # Look for root (/) and /boot partitions
+    df | awk '$NF == "/" || $NF == "/boot" { print $1 }' | grep -E "da[0-9]" || true
+}
+
 #--- Main ----------------------------------------------------------------------
 require_root
 
-LOG_DIR="/var/log"
-SCRAPE_ERROR=0
-FOUND_FILES=0
+PROBLEM_COUNT=0
+PRIMARY_DISK_CODE=0
 
-echo "# HELP vm_log_files_stats_size_kb Size of log files in KB"
-echo "# TYPE vm_log_files_stats_size_kb gauge"
-echo "# HELP vm_log_files_stats_last_modification_days Number of days since last modification of log files"
-echo "# TYPE vm_log_files_stats_last_modification_days gauge"
-echo "# HELP vm_log_files_stats_scrape_error 1 if an error occurred or no files found, 0 otherwise"
-echo "# TYPE vm_log_files_stats_scrape_error gauge"
-
-# Current epoch (for calculating staleness)
-now_epoch=$(date +%s)
-
-# Use null-delimited find to avoid issues with spaces
-if ! find "$LOG_DIR" -type f \
-    \( -name "*.log" -o -name "syslog" -o -name "btmp" -o -name "wtmp" -o -name "lastlog" \) \
-    ! -regex '.*\.[0-9]+\.log$' -print0 |
-while IFS= read -r -d '' file; do
-    FOUND_FILES=1
-    # Get file size in KB
-    if ! size=$(du -k --apparent-size --block-size=1K "$file" 2>/dev/null | cut -f1); then
-        SCRAPE_ERROR=1
-        continue
-    fi
-
-    # Get last modification epoch
-    if ! mod_epoch=$(stat -c "%Y" "$file" 2>/dev/null); then
-        SCRAPE_ERROR=1
-        continue
-    fi
-
-    # Calculate age in days
-    mod_days=$(( (now_epoch - mod_epoch) / 86400 ))
-
-    # Get last modification date (YYYY-MM-DD) for label
-    mod_date=$(stat -c "%y" "$file" 2>/dev/null | cut -d ' ' -f1 || echo "unknown")
-
-    # Prometheus metrics
-    echo "vm_log_files_stats_size_kb{file=\"$file\",last_mod_date=\"$mod_date\"} $size"
-    echo "vm_log_files_stats_last_modification_days{file=\"$file\",last_mod_date=\"$mod_date\"} $mod_days"
-done
-then
-    SCRAPE_ERROR=1
+PRIMARY_DISK_NAME=$(find_primary_disk)
+if [ -z "$PRIMARY_DISK_NAME" ]; then
+    PROBLEM_COUNT=$((PROBLEM_COUNT + 1))
 fi
 
-# If no files were found, also mark scrape error
-if [ "$FOUND_FILES" -eq 0 ]; then
-    SCRAPE_ERROR=1
+PRIMARY_DISK=$(echo "$PRIMARY_DISK_NAME" | grep -c -E "da[0-9]" || true)
+if [ "$PRIMARY_DISK" -eq 0 ]; then
+    PRIMARY_DISK_CODE=1
+    PROBLEM_COUNT=$((PROBLEM_COUNT + 1))
 fi
 
-# Final scrape error metric
-echo "vm_log_files_stats_scrape_error $SCRAPE_ERROR"
+#--- Prometheus Metrics --------------------------------------------------------
+echo "# HELP node_wrong_disk_on_boot Check if the primary boot/root disk matches naming convention (daX)"
+echo "# TYPE node_wrong_disk_on_boot gauge"
+if [ -z "$PRIMARY_DISK_NAME" ]; then
+    echo "node_wrong_disk_on_boot $PRIMARY_DISK_CODE"
+else
+    echo "node_wrong_disk_on_boot{primary_disk=\"$PRIMARY_DISK_NAME\"} $PRIMARY_DISK_CODE"
+fi
 
-# Always exit 0 for Prometheus
+#--- Exit Codes ----------------------------------------------------------------
+if [ "$PROBLEM_COUNT" -ne 0 ]; then
+    exit 1
+fi
 exit 0
