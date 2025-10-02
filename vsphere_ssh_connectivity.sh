@@ -1,9 +1,20 @@
 #!/usr/bin/env bash
+#===============================================================================
+#         FILE:  ssh_connectivity.sh
 #
-# ssh_connectivity.sh
+#        USAGE:  ./ssh_connectivity.sh
 #
-# Checks SSH connectivity to VMs from vSphere and writes metrics for Prometheus textfile collector.
-# Runs multiple SSH checks in parallel to speed up execution.
+#  DESCRIPTION:  Checks SSH connectivity to VMs from vSphere and writes metrics
+#                for Prometheus node_exporter textfile collector.
+#                Runs multiple SSH checks in parallel.
+#
+#  REQUIREMENTS: bash 4+, sshpass, jq, curl, timeout
+#       AUTHOR:  Philippe
+#      VERSION: 2.0
+#      CREATED: 2025-10-02
+#===============================================================================
+
+set -euo pipefail
 
 ############################################################################
 ### Pre-checks
@@ -13,8 +24,6 @@ if [ -z "$VAULT_TOKEN" ]; then echo "ERROR: VAULT_TOKEN is not set, exiting."; e
 
 ############################################################################
 ### VARIABLES
-
-export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 
 #VSPHERE_SECRET_PATH="kv/data/vsphere"
 #VSPHERE_DATA=$(vault kv get -mount=kv -format=json "$VSPHERE_SECRET_PATH")
@@ -28,15 +37,12 @@ export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 #SSH_USERS["login1"]="$(echo "$SSH_DATA" | jq -r '.data.data.login1_password')"
 #SSH_USERS["login2"]="$(echo "$SSH_DATA" | jq -r '.data.data.login2_password')"
 #
-## Various
-#MAX_JOBS=20
-#SSH_TIMEOUT=30
-#SSH_OPTS="-o StrictHostKeyChecking=no -o ConnectTimeout=$SSH_TIMEOUT -o BatchMode=no"
-#
-## vsphere select vms names
 #INCLUDE_LIST=('^vm-')
 #EXCLUDE_LIST=('vm-talos.*' 'vm-windows.*' 'vm-citrix.*')
 
+MAX_JOBS=${MAX_JOBS:-20}
+SSH_TIMEOUT=${SSH_TIMEOUT:-30}
+SSH_OPTS="-o StrictHostKeyChecking=no -o ConnectTimeout=$SSH_TIMEOUT -o BatchMode=no"
 
 ############################################################################
 ### === Step 1: Authenticate to vSphere API ===

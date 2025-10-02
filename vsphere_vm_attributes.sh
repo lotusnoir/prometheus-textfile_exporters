@@ -1,76 +1,110 @@
-#!/bin/bash
+#!/usr/bin/env bash
+#===============================================================================
+#         FILE:  vsphere_vm_attributes.sh
+#
+#        USAGE:  ./vsphere_vm_attributes.sh
+#
+#  DESCRIPTION:  Extract VM attributes and tags from vSphere and emit Prometheus metrics
+#                to stdout for node_exporter textfile collector.
+#
+#  REQUIREMENTS: bash 4+, curl, jq
+#       AUTHOR:  Philippe
+#      VERSION: 2.8
+#      CREATED: 2025-10-02
+#===============================================================================
 
-## Configuration
-#VSPHERE_URL="ADD_VSPHERE_URL"
-#VSPHERE_USER="ADD_VSPHERE_USER"
-#VSPHERE_PWD="ADD_VSPHERE_PWD"
-#VSPHERE_TEMPFILE_COOKIE="/tmp/cookie"
-#METRIC_NAME="vsphere_vm_attributes"
-#OUTPUT_FILE="/var/lib/node_exporter/vsphere_vm_attributes.prom"
+set -euo pipefail
+SCRAPE_ERROR=0
 
-function vsphere_get_ticket() {
-    curl --noproxy '*' -s -k -u "${VSPHERE_USER}:${VSPHERE_PWD}" -X POST -c "${VSPHERE_TEMPFILE_COOKIE}" "${VSPHERE_URL}/rest/com/vmware/cis/session" > /dev/null
-}
+# --- Variables avec surcharge possible via ENV ---
+METRIC_NAME="${METRIC_NAME:-vsphere_vm_attributes}"
+VSPHERE_TEMPFILE_COOKIE="${VSPHERE_TEMPFILE_COOKIE:-/tmp/cookie}"
+VSPHERE_SECRET_PATH="${VSPHERE_SECRET_PATH:-machines/prod/apps/terraform/vsphere}"
 
-function vsphere_list_tags_category() {
-    curl --noproxy '*' -k -s -b "${VSPHERE_TEMPFILE_COOKIE}" "${VSPHERE_URL}/api/cis/tagging/category" | \
-    sed 's/[][]//g; s/"//g; s/,/ /g'
-}
+# Récupération des infos vSphere depuis Vault si non surchargées
+if [ -z "${VSPHERE_SERVER:-}" ] || [ -z "${VSPHERE_USER:-}" ] || [ -z "${VSPHERE_PASS:-}" ]; then
+    VSPHERE_DATA=$(vault kv get -mount=kv -format=json "$VSPHERE_SECRET_PATH")
+    VSPHERE_SERVER="${VSPHERE_SERVER:-$(echo "$VSPHERE_DATA" | jq -r '.data.data.vsphere_server')}"
+    VSPHERE_USER="${VSPHERE_USER:-$(echo "$VSPHERE_DATA" | jq -r '.data.data.vsphere_username')}"
+    VSPHERE_PASS="${VSPHERE_PASS:-$(echo "$VSPHERE_DATA" | jq -r '.data.data.vsphere_password')}"
+fi
+VSPHERE_URL="${VSPHERE_URL:-https://${VSPHERE_SERVER}}"
 
-function vsphere_list_tags() {
-    curl --noproxy '*' -k -s -b "${VSPHERE_TEMPFILE_COOKIE}" "${VSPHERE_URL}/api/cis/tagging/tag" | \
-    sed 's/[][]//g; s/"//g; s/,/ /g'
-}
+INCLUDE_LIST=(${INCLUDE_LIST[@]:-("^vm-")})
+EXCLUDE_LIST=(${EXCLUDE_LIST[@]:-("vm-talos.*")})
+MANDATORY_KEYS=(${MANDATORY_KEYS[@]:-("site" "os" "env" "vlan" "scope")})
 
-function vsphere_get_tagcategoryname_from_id() {
-    local TAG_CAT_ID=$1
-    curl --noproxy '*' -k -s -b "${VSPHERE_TEMPFILE_COOKIE}" "${VSPHERE_URL}/api/cis/tagging/category/$TAG_CAT_ID" | \
-    jq -r '.name'
-}
+### Functions ---------------------------------------------------------------
+cleanup() { rm -f "${VSPHERE_TEMPFILE_COOKIE:-}"; }
+trap cleanup EXIT
 
-function vsphere_list_vmid() {
-    curl --noproxy '*' -s -k -b "${VSPHERE_TEMPFILE_COOKIE}" "${VSPHERE_URL}/rest/vcenter/vm" | \
-    jq -r '.value[].vm'
-}
-
-# Main function
-function vsphere_generate_prometheus_metrics() {
-    # Initialize cookie file
+vsphere_get_ticket() {
     VSPHERE_TEMPFILE_COOKIE=$(mktemp)
+    curl --noproxy '*' -s -k -u "${VSPHERE_USER}:${VSPHERE_PASS}" -X POST -c "$VSPHERE_TEMPFILE_COOKIE" "${VSPHERE_URL}/rest/com/vmware/cis/session" > /dev/null
+}
 
-    # Authenticate
+vsphere_list_tags_category() {
+    curl --noproxy '*' -k -s -b "$VSPHERE_TEMPFILE_COOKIE" "${VSPHERE_URL}/api/cis/tagging/category" | \
+    jq -r 'if type=="object" and has("value") then .value else . end | .[]'
+}
+
+vsphere_list_tags() {
+    curl --noproxy '*' -k -s -b "$VSPHERE_TEMPFILE_COOKIE" "${VSPHERE_URL}/api/cis/tagging/tag" | \
+    jq -r 'if type=="object" and has("value") then .value else . end | .[]'
+}
+
+vsphere_get_tagcategoryname_from_id() {
+    local TAG_CAT_ID=$1
+    curl --noproxy '*' -k -s -b "$VSPHERE_TEMPFILE_COOKIE" "${VSPHERE_URL}/api/cis/tagging/category/$TAG_CAT_ID" | jq -r '.name'
+}
+
+vsphere_generate_prometheus_metrics() {
     vsphere_get_ticket
 
-    echo "# Starting VM information collection for Prometheus metrics..."
-    echo "# HELP vmware_vm_attributes Extract attributes from vmware 1 = set 0 doesnt exist"  > "$OUTPUT_FILE"
-    echo "# TYPE vmware_vm_attributes gauge" >> "$OUTPUT_FILE"
+    # Prometheus headers
+    {
+        echo "# HELP $METRIC_NAME Extract attributes from vSphere 0=ok, 1=missing mandatory, 2=no tags at all"
+        echo "# TYPE $METRIC_NAME gauge"
+    }
 
-    # Step 1: Get all tag categories
-    declare -A tag_categories
-    echo "# Fetching tag categories..."
-    local tag_cat_list=($(vsphere_list_tags_category))
-    for cat_id in "${tag_cat_list[@]}"; do
-        tag_categories["$cat_id"]=$(vsphere_get_tagcategoryname_from_id "$cat_id")
+    EXCLUDE_REGEX=$(IFS="|"; echo "${EXCLUDE_LIST[*]}")
+    INCLUDE_REGEX=$(IFS="|"; echo "${INCLUDE_LIST[*]}")
+
+    # Fetch VMs and apply filters
+    declare -A vm_names
+    mapfile -t vm_lines < <(
+        curl --noproxy '*' -s -k -b "$VSPHERE_TEMPFILE_COOKIE" "${VSPHERE_URL}/rest/vcenter/vm" \
+        | jq -c --arg exclude_regex "$EXCLUDE_REGEX" --arg include_regex "$INCLUDE_REGEX" '
+            if type=="object" and has("value") then .value else . end
+            | .[]
+            | select(.power_state=="POWERED_ON")
+            | select(.name | test($include_regex))
+            | select(.name | test($exclude_regex) | not)
+            | [.vm, .name]
+        '
+    )
+    for line in "${vm_lines[@]}"; do
+        vm_id=$(echo "$line" | jq -r '.[0]')
+        hostname=$(echo "$line" | jq -r '.[1]')
+        vm_names["$vm_id"]="$hostname"
     done
 
-    # Step 2: Get all tags with formatted names
-    declare -A tags
-    declare -A tag_category_map
-    declare -A base_tag_names  # To store the original tag names without category prefixes
-    echo "# Processing tags..."
-    local tag_list=($(vsphere_list_tags))
-    for tag_id in "${tag_list[@]}"; do
-        local tag_info=$(curl --noproxy '*' -k -s -b "${VSPHERE_TEMPFILE_COOKIE}" "${VSPHERE_URL}/api/cis/tagging/tag/$tag_id")
-        local tag_name=$(echo "$tag_info" | jq -r '.name')
-        local cat_id=$(echo "$tag_info" | jq -r '.category_id')
-        local cat_name="${tag_categories[$cat_id]}"
+    # Fetch all tag categories
+    declare -A tag_categories tags tag_category_map base_tag_names
+    mapfile -t tag_cat_ids < <(vsphere_list_tags_category)
+    for cat_id in "${tag_cat_ids[@]}"; do
+        tag_categories["$cat_id"]="$(vsphere_get_tagcategoryname_from_id "$cat_id")"
+    done
 
-        # Store category for each tag
+    # Fetch all tags
+    mapfile -t tag_ids < <(vsphere_list_tags)
+    for tag_id in "${tag_ids[@]}"; do
+        tag_info=$(curl --noproxy '*' -k -s -b "$VSPHERE_TEMPFILE_COOKIE" "${VSPHERE_URL}/api/cis/tagging/tag/$tag_id")
+        tag_name=$(echo "$tag_info" | jq -r '.name')
+        cat_id=$(echo "$tag_info" | jq -r '.category_id')
+        cat_name="${tag_categories[$cat_id]}"
         tag_category_map["$tag_id"]="$cat_name"
-        # Store the base tag name without category prefix
         base_tag_names["$tag_id"]="$tag_name"
-
-        # Format combined tag name
         if [[ "$cat_name" == "site" ]]; then
             tags["$tag_id"]="$tag_name"
         else
@@ -78,56 +112,42 @@ function vsphere_generate_prometheus_metrics() {
         fi
     done
 
-    # Step 3: Get powered-on VMs
-    declare -A vm_names
-    echo "# Fetching VM list..."
-    while IFS=$'\t' read -r vm_id vm_name; do
-        vm_names["$vm_id"]="$vm_name"
-    done < <(curl --noproxy '*' -s -k -b "${VSPHERE_TEMPFILE_COOKIE}" "${VSPHERE_URL}/rest/vcenter/vm" | \
-             jq -r '.value[] | select(.vm != null) | select(.power_state == "POWERED_ON") | [.vm, .name] | @tsv' | sort)
+    # Fetch all VM tag associations
+    all_vm_tags=$(curl -k -s --noproxy '*' -b "$VSPHERE_TEMPFILE_COOKIE" --url "${VSPHERE_URL}/api/vcenter/tagging/associations" | jq -c '.associations[]')
 
-    # Step 4: Get VM tags and generate Prometheus metrics
-    echo "# Generating Prometheus metrics..."
+    # Generate metrics per VM
+for vm_id in "${!vm_names[@]}"; do
+    hostname="${vm_names[$vm_id]}"
+    declare -A vm_tag_map=()
 
-    local vm_ids=($(vsphere_list_vmid))
-    local all_vm_tags=$(curl -k -s --noproxy '*' -X GET -b "${VSPHERE_TEMPFILE_COOKIE}" --url "${VSPHERE_URL}/api/vcenter/tagging/associations" | jq -r '.associations[]')
+    mapfile -t vm_tag_ids < <(echo "$all_vm_tags" | jq -r --arg ID "$vm_id" 'select(.object.id==$ID) | .tag')
 
-    for vm_id in "${vm_ids[@]}"; do
-        local vm_name="${vm_names[$vm_id]}"
-        [ -z "$vm_name" ] && continue
+    if [ ${#vm_tag_ids[@]} -eq 0 ]; then
+        # Pas de tag → value=2, on skip mandatory keys
+        echo "$METRIC_NAME{vmid=\"$vm_id\",hostname=\"$hostname\"} 2"
+        continue
+    fi
 
-        # Get tags for this VM
-        local tag_ids=($(echo "$all_vm_tags" | jq -r --arg ID "$vm_id" 'select(.object.id == $ID) | .tag'))
-
-        if [ ${#tag_ids[@]} -eq 0 ]; then
-            # No tags found for this VM - output with value 0
-            echo "${METRIC_NAME}{vmid=\"$vm_id\", vm_name=\"$vm_name\"} 0" >> "$OUTPUT_FILE"
-        else
-            has_valid_tags=false
-            for tag_id in "${tag_ids[@]}"; do
-                tag_name="${tags[$tag_id]}"
-                cat_name="${tag_category_map[$tag_id]}"
-                base_tag_name="${base_tag_names[$tag_id]}"
-                if [ -z "$tag_name" ] || [ -z "$cat_name" ] || [ -z "$base_tag_name" ]; then
-                    continue
-                fi
-                has_valid_tags=true
-
-                # Write metric with corrected tag names
-                echo "${METRIC_NAME}{vmid=\"$vm_id\", vm_name=\"$vm_name\", vm_tagcategory=\"$cat_name\", vm_tagname=\"$base_tag_name\", vm_tagcombined=\"${cat_name}_${base_tag_name}\"} 1" >> "$OUTPUT_FILE"
-            done
-
-            if [ "$has_valid_tags" = false ]; then
-                # VM had tags but none were valid - output with value 0
-                echo "${METRIC_NAME}{vmid=\"$vm_id\", vm_name=\"$vm_name\"} 0" >> "$OUTPUT_FILE"
-            fi
-        fi
+    # Émettre les tags existants (value=0)
+    for tag_id in "${vm_tag_ids[@]}"; do
+        key="${tag_category_map[$tag_id]}"
+        value="${base_tag_names[$tag_id]}"
+        vm_tag_map["$key"]="$value"
+        echo "$METRIC_NAME{vmid=\"$vm_id\",hostname=\"$hostname\",key=\"$key\",value=\"$value\",ansible_tag=\"${key}_${value}\"} 0"
     done
 
-    # Cleanup
-    rm -f "${VSPHERE_TEMPFILE_COOKIE}"
+    # Mandatory keys manquantes (value=1)
+    for k in "${MANDATORY_KEYS[@]}"; do
+        if [ -z "${vm_tag_map[$k]:-}" ]; then
+            echo "$METRIC_NAME{vmid=\"$vm_id\",hostname=\"$hostname\",key=\"$k\",value=\"empty\",ansible_tag=\"empty\"} 1"
+        fi
+    done
+done
 
-    echo "# Metrics generation complete"
+    # Scrape error metric
+    echo "# HELP ${METRIC_NAME}_scrape_error 1 if an error occurred during parsing"
+    echo "# TYPE ${METRIC_NAME}_scrape_error gauge"
+    echo "${METRIC_NAME}_scrape_error $SCRAPE_ERROR"
 }
 
 ### START ###
