@@ -15,12 +15,18 @@
 #===============================================================================
 
 set -euo pipefail
+export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 
 ############################################################################
 ### Pre-checks
-if [ -z "$USER" ] ; then USER=$(whoami); fi
-if [ "$USER" != "root" ] ; then echo "$(basename "$0") must be run as root!"; exit 2; fi
-if [ -z "$VAULT_TOKEN" ]; then echo "ERROR: VAULT_TOKEN is not set, exiting."; exit 1; fi
+require_root() {
+    if [ "$(id -u)" -ne 0 ]; then
+        echo "$(basename "$0") must be run as root!" >&2
+        exit 2
+    fi
+}
+
+require_root
 
 ############################################################################
 # --- Variables avec surcharge possible via ENV ---
@@ -28,6 +34,7 @@ if [ -z "$VAULT_TOKEN" ]; then echo "ERROR: VAULT_TOKEN is not set, exiting."; e
 VSPHERE_SECRET_PATH="${VSPHERE_SECRET_PATH:-machines/prod/apps/terraform/vsphere}"
 # Récupération des infos vSphere depuis Vault si non surchargées
 if [ -z "${VSPHERE_SERVER:-}" ] || [ -z "${VSPHERE_USER:-}" ] || [ -z "${VSPHERE_PASS:-}" ]; then
+    if [ -z "$VAULT_TOKEN" ]; then echo "ERROR: VAULT_TOKEN is not set, exiting."; exit 1; fi
     VSPHERE_DATA=$(vault kv get -mount=kv -format=json "$VSPHERE_SECRET_PATH")
     VSPHERE_SERVER="${VSPHERE_SERVER:-$(echo "$VSPHERE_DATA" | jq -r '.data.data.vsphere_server')}"
     VSPHERE_USER="${VSPHERE_USER:-$(echo "$VSPHERE_DATA" | jq -r '.data.data.vsphere_username')}"
