@@ -49,9 +49,9 @@ fi
 echo "# HELP node_wrong_disk_on_boot Check if the primary boot/root disk matches naming convention (daX)"
 echo "# TYPE node_wrong_disk_on_boot gauge"
 if [ -z "$PRIMARY_DISK_NAME" ]; then
-    echo "node_wrong_disk_on_boot $PRIMARY_DISK_CODE"
+    echo "vm_primary_disk_mismatch $PRIMARY_DISK_CODE"
 else
-    echo "node_wrong_disk_on_boot{primary_disk=\"$PRIMARY_DISK_NAME\"} $PRIMARY_DISK_CODE"
+    echo "vm_primary_disk_mismatch{primary_disk=\"$PRIMARY_DISK_NAME\"} $PRIMARY_DISK_CODE"
 fi
 
 #--- Exit Codes ----------------------------------------------------------------
