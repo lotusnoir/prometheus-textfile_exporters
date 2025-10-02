@@ -19,10 +19,10 @@
 
 ############################################################################
 ### Defaults
+set -euo pipefail
 export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 
 ### Env variable with default values
-MAX_JOBS=${MAX_JOBS:-20}   # default parallelism
 DNS_SERVER=${DNS_SERVER:-}
 DNS_DOMAIN=${DNS_DOMAIN:-}
 
@@ -33,29 +33,58 @@ fi
 
 ############################################################################
 ### Pre-checks
-if [ -z "$USER" ] ; then USER=$(whoami); fi
-if [ "$USER" != "root" ] ; then echo "$(basename "$0") must be run as root!"; exit 2; fi
-if [ -z "$VAULT_TOKEN" ]; then echo "ERROR: VAULT_TOKEN is not set, exiting."; exit 1; fi
+require_root() {
+    if [ "$(id -u)" -ne 0 ]; then
+        echo "$(basename "$0") must be run as root!" >&2
+        exit 2
+    fi
+}
+
+require_root
 
 ############################################################################
-### VARIABLES
-#export HTTP_PROXY=http://proxy.query.consul:80
-#export HTTPS_PROXY=http://proxy.query.consul:80
-#
-#VSPHERE_SECRET_PATH="machines/prod/apps/terraform/vsphere"
-#VSPHERE_DATA=$(vault kv get -mount=kv -format=json "$VSPHERE_SECRET_PATH")
-#VSPHERE_USER=$(echo "$VSPHERE_DATA" | jq -r '.data.data.vsphere_username')
-#VSPHERE_PASS=$(echo "$VSPHERE_DATA" | jq -r '.data.data.vsphere_password')
-#VSPHERE_SERVER=$(echo "$VSPHERE_DATA" | jq -r '.data.data.vsphere_server')
-#
-#SSH_SECRET_PATH="machines/prod/apps/terraform/ssh"
-#SSH_DATA=$(vault kv get -mount=kv -format=json "$SSH_SECRET_PATH")
-#SSH_USER="app-ansible"
-#SSH_USER_PASSWORD=$(echo "$SSH_DATA" | jq -r '.data.data.ssh_password')
-#
-#SSH_OPTS="-o BatchMode=no -o ConnectTimeout=60 -o StrictHostKeyChecking=no"
-#INCLUDE_LIST=('^vm-')
-#EXCLUDE_LIST=('vm-talos.*') 
+# --- Variables avec surcharge possible via ENV ---
+
+VSPHERE_SECRET_PATH="${VSPHERE_SECRET_PATH:-machines/prod/apps/terraform/vsphere}"
+# Récupération des infos vSphere depuis Vault si non surchargées
+if [ -z "${VSPHERE_SERVER:-}" ] || [ -z "${VSPHERE_USER:-}" ] || [ -z "${VSPHERE_PASS:-}" ]; then
+    if [ -z "$VAULT_TOKEN" ]; then echo "ERROR: VAULT_TOKEN is not set, exiting."; exit 1; fi
+    VSPHERE_DATA=$(vault kv get -mount=kv -format=json "$VSPHERE_SECRET_PATH")
+    VSPHERE_SERVER="${VSPHERE_SERVER:-$(echo "$VSPHERE_DATA" | jq -r '.data.data.vsphere_server')}"
+    VSPHERE_USER="${VSPHERE_USER:-$(echo "$VSPHERE_DATA" | jq -r '.data.data.vsphere_username')}"
+    VSPHERE_PASS="${VSPHERE_PASS:-$(echo "$VSPHERE_DATA" | jq -r '.data.data.vsphere_password')}"
+fi
+
+SSH_SECRET_PATH="${SSH_SECRET_PATH:-machines/prod/apps/terraform/ssh}"
+SSH_KEYS_TO_USE=(${SSH_KEYS_TO_USE[@]:-})
+declare -A SSH_USERS
+
+# récupère depuis Vault seulement si SSH_KEYS_TO_USE est défini
+if [ "${#SSH_KEYS_TO_USE[@]}" -ne 0 ]; then
+    if SSH_DATA=$(vault kv get -mount=kv -format=json "$SSH_SECRET_PATH" 2>/dev/null); then
+        for key in "${SSH_KEYS_TO_USE[@]}"; do
+            value=$(jq -r ".data.data.\"${key}_password\" // empty" <<< "$SSH_DATA")
+            if [ -n "$value" ]; then
+                SSH_USERS["$key"]="$value"
+            fi
+        done
+    fi
+else
+    # --- Surcharge spécifique depuis ENV ---
+    # pour chaque login, si une variable ENV SSH_USERS_<login>=<mdp> existe, on surcharge
+    for user in "${!SSH_USERS[@]}"; do
+        env_var="SSH_USERS_${user}"
+        if [ -n "${!env_var:-}" ]; then
+            SSH_USERS["$user"]="${!env_var}"
+        fi
+    done
+fi
+
+INCLUDE_LIST=(${INCLUDE_LIST[@]:-("^vm-")})
+EXCLUDE_LIST=(${EXCLUDE_LIST[@]:-("vm-talos.*" "vm-windows.*" "vm-citrix.*")})
+MAX_JOBS=${MAX_JOBS:-20}
+SSH_TIMEOUT=${SSH_TIMEOUT:-30}
+SSH_OPTS="${SSH_OPTS:--o StrictHostKeyChecking=no -o ConnectTimeout=$SSH_TIMEOUT -o BatchMode=no}"
 
 ############################################################################
 ### Step 1: Authenticate to vSphere API
