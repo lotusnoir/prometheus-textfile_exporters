@@ -1,15 +1,28 @@
-#!/bin/bash
+#!/usr/bin/env bash
+#===============================================================================
+#         FILE:  terragrunt_project_status.sh 
+#
+#        USAGE:  ./terragrunt_project_status.sh
+#
+#  DESCRIPTION:  
+#
+#  REQUIREMENTS: bash 4+, curl, jq
+#       AUTHOR:  Philippe LEAL (lotus.noir@gmail.com)
+#      VERSION: 2.8
+#      CREATED: 2025-10-02
+#===============================================================================
 set -euo pipefail  # Strict error handling
+export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 
 ### CONFIGURATION
-#BASE_REPO_URL="gitlab.url/terraform_core.git"
-#BRANCH="main"
-#REPO_DIR="/tmp/terraform_core"
-#PROJECT_PATH="${REPO_DIR}/deploy/vsphere/vms"
-#REMOVE_PATH_PREFIX="${REPO_DIR}/deploy/vsphere/"
-#GIT_TOKEN="xxxxxxxxxxxx"  # Consider using environment variable instead
-#MAX_JOBS=8
-#MAX_RETRIES=3
+BASE_REPO_URL="${BASE_REPO_URL:-}"
+BRANCH="${BRANCH:-main}"
+GIT_TOKEN="${GIT_TOKEN:-}"
+REPO_CLONE_DIR="${REPO_CLONE_DIR:-/tmp/terraform_core}"
+PROJECT_PATH="${PROJECT_PATH:-${REPO_CLONE_DIR}/deploy/vsphere/vms}"
+REMOVE_PATH_PREFIX="${REMOVE_PATH_PREFIX:-${REPO_CLONE_DIR}/deploy/vsphere/}"
+MAX_JOBS="${MAX_JOBS:-8}"
+MAX_RETRIES="${MAX_RETRIES:-3}"
 
 #################################
 # Debug mode (set DEBUG=on to enable verbose output)
@@ -114,15 +127,15 @@ if [ "$DEBUG" = "on" ]; then
 fi
 
 # Clone or update repository
-if [ ! -d "$REPO_DIR/.git" ]; then
+if [ ! -d "$REPO_CLONE_DIR/.git" ]; then
     log "Cloning repository..."
-    if ! git clone --branch "$BRANCH" "$AUTH_REPO_URL" "$REPO_DIR" >/dev/null 2>&1; then
+    if ! git clone --branch "$BRANCH" "$AUTH_REPO_URL" "$REPO_CLONE_DIR" >/dev/null 2>&1; then
         error "Failed to clone repository"
     fi
-    cd "$REPO_DIR" || error "Failed to change to repo directory"
+    cd "$REPO_CLONE_DIR" || error "Failed to change to repo directory"
 else
     log "Updating existing repository..."
-    cd "$REPO_DIR" || error "Failed to change to repo directory"
+    cd "$REPO_CLONE_DIR" || error "Failed to change to repo directory"
     
     # Reset and clean repository
     git fetch origin "$BRANCH" >/dev/null 2>&1 || error "Failed to fetch from origin"
