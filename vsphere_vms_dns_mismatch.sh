@@ -55,29 +55,15 @@ if [ -z "${VSPHERE_SERVER:-}" ] || [ -z "${VSPHERE_USER:-}" ] || [ -z "${VSPHERE
     VSPHERE_PASS="${VSPHERE_PASS:-$(echo "$VSPHERE_DATA" | jq -r '.data.data.vsphere_password')}"
 fi
 
+SSH_USER=${SSH_USER:-app-ansible}
 SSH_SECRET_PATH="${SSH_SECRET_PATH:-machines/prod/apps/terraform/ssh}"
-SSH_KEYS_TO_USE=(${SSH_KEYS_TO_USE[@]:-})
-declare -A SSH_USERS
-
-# récupère depuis Vault seulement si SSH_KEYS_TO_USE est défini
-if [ "${#SSH_KEYS_TO_USE[@]}" -ne 0 ]; then
-    if SSH_DATA=$(vault kv get -mount=kv -format=json "$SSH_SECRET_PATH" 2>/dev/null); then
-        for key in "${SSH_KEYS_TO_USE[@]}"; do
-            value=$(jq -r ".data.data.\"${key}_password\" // empty" <<< "$SSH_DATA")
-            if [ -n "$value" ]; then
-                SSH_USERS["$key"]="$value"
-            fi
-        done
-    fi
+if [ -z "${SSH_USER_PASSWORD:-}" ]; then
+    if [ -z "$VAULT_TOKEN" ]; then echo "ERROR: VAULT_TOKEN is not set, exiting."; exit 1; fi
+    SSH_DATA=$(vault kv get -mount=kv -format=json "$SSH_SECRET_PATH")
+    SSH_USER_PASSWORD=$(echo "$SSH_DATA" | jq -r '.data.data.ssh_password')
 else
     # --- Surcharge spécifique depuis ENV ---
-    # pour chaque login, si une variable ENV SSH_USERS_<login>=<mdp> existe, on surcharge
-    for user in "${!SSH_USERS[@]}"; do
-        env_var="SSH_USERS_${user}"
-        if [ -n "${!env_var:-}" ]; then
-            SSH_USERS["$user"]="${!env_var}"
-        fi
-    done
+    SSH_USER_PASSWORD=${SSH_USER_PASSWORD:-}
 fi
 
 INCLUDE_LIST=(${INCLUDE_LIST[@]:-("^vm-")})
