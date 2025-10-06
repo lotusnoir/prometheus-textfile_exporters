@@ -195,8 +195,8 @@ if [ "$PRINT" -eq "1" ]; then
   done
  
   #####################################
-  echo "# HELP version_comparison_scrape Check if versions were found 1 ok, 0 problem"
-  echo "# TYPE version_comparison_scrape gauge"
+  echo "# HELP version_comparison_scrape_success Check if versions were found 1 ok, 0 problem"
+  echo "# TYPE version_comparison_scrape_success gauge"
 
   current_date=$(date +%s) # Unix timestamp format
   # Initialize all_ok flag
@@ -207,7 +207,7 @@ if [ "$PRINT" -eq "1" ]; then
     prefix="${app^^}"
     scrape_var="${prefix}_VERSION_SCRAPE"
     if [ -n "${!scrape_var}" ]; then
-        echo "version_comparison_scrape{application=\"$app\"} ${!scrape_var}"
+        echo "version_comparison_scrape_success{application=\"$app\"} ${!scrape_var}"
         
         # Check if value is not 1
         if [ "${!scrape_var}" -ne 1 ]; then

@@ -33,7 +33,7 @@ VSPHERE_URL="${VSPHERE_URL:-https://${VSPHERE_SERVER}}"
 
 INCLUDE_LIST=(${INCLUDE_LIST[@]:-("^vm-")})
 EXCLUDE_LIST=(${EXCLUDE_LIST[@]:-("vm-talos.*")})
-MANDATORY_KEYS=(${MANDATORY_KEYS[@]:-("site" "os" "env" "vlan" "scope")})
+MANDATORY_KEYS=(${MANDATORY_KEYS[@]:-"site" "os" "env" "vlan" "scope"})
 
 ### Functions ---------------------------------------------------------------
 cleanup() { rm -f "${VSPHERE_TEMPFILE_COOKIE:-}"; }
