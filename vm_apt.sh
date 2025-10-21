@@ -48,16 +48,21 @@ done < <(apt list --upgradable 2>/dev/null | tail -n +2)
 # -----------------------------
 policy_output=$(apt-cache policy "${upgradable_list[@]}" 2>/dev/null)
 current_pkg=""
+cand=""
+arch=$(dpkg --print-architecture 2>/dev/null || echo "unknown")
+
 while IFS= read -r line; do
     line="${line#"${line%%[![:space:]]*}"}"  # trim leading space
     if [[ "$line" =~ ^([a-zA-Z0-9.+-]+):$ ]]; then
         current_pkg="${BASH_REMATCH[1]}"
     elif [[ "$line" == Candidate:* ]]; then
-        cand=$(awk '{print $2}' <<< "$line")
-    elif [[ "$line" == *https://* && "$line" == *"$cand"* ]]; then
+        cand=$(awk '{print ($2 ? $2 : "")}' <<< "${line:-}")
+    elif [[ "$line" == *https://* && "$line" == *"${cand:-}"* ]]; then
         url=$(awk '{print $2}' <<< "$line")
         distro=$(awk '{print $3}' <<< "$line")
-        pkg_origin_cache["$current_pkg"]="${url}:${distro}/${arch}"
+        if [[ -n "${current_pkg:-}" ]]; then
+            pkg_origin_cache["$current_pkg"]="${url}:${distro}/${arch}"
+        fi
     fi
 done <<< "$policy_output"
 
