@@ -8,7 +8,7 @@
 #                Exposes results in Prometheus node_exporter textfile format.
 #
 #  REQUIREMENTS: awk, df, grep
-#       AUTHOR:  Philippe (Axione)
+#       AUTHOR:  Philippe LEAL
 #      VERSION:  1.1
 #      CREATED:  2025-10-01
 #===============================================================================

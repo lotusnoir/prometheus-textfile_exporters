@@ -64,7 +64,7 @@ vsphere_generate_prometheus_metrics() {
 
     # Prometheus headers
     {
-        echo "# HELP $METRIC_NAME Extract attributes from vSphere 0=ok, 1=missing mandatory, 2=no tags at all"
+        echo "# HELP $METRIC_NAME Extract attributes from vSphere 0=empty mandatory, 1=found_attribute, 2=no tags at all"
         echo "# TYPE $METRIC_NAME gauge"
     }
 
@@ -134,13 +134,13 @@ for vm_id in "${!vm_names[@]}"; do
         key="${tag_category_map[$tag_id]}"
         value="${base_tag_names[$tag_id]}"
         vm_tag_map["$key"]="$value"
-        echo "$METRIC_NAME{vmid=\"$vm_id\",hostname=\"$hostname\",key=\"$key\",value=\"$value\",ansible_tag=\"${key}_${value}\"} 0"
+        echo "$METRIC_NAME{vmid=\"$vm_id\",hostname=\"$hostname\",key=\"$key\",value=\"$value\",ansible_tag=\"${key}_${value}\"} 1"
     done
 
     # Mandatory keys manquantes (value=1)
     for k in "${MANDATORY_KEYS[@]}"; do
         if [ -z "${vm_tag_map[$k]:-}" ]; then
-            echo "$METRIC_NAME{vmid=\"$vm_id\",hostname=\"$hostname\",key=\"$k\",value=\"empty\",ansible_tag=\"empty\"} 1"
+            echo "$METRIC_NAME{vmid=\"$vm_id\",hostname=\"$hostname\",key=\"$k\",value=\"empty\",ansible_tag=\"empty\"} 0"
         fi
     done
 done

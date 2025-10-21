@@ -101,7 +101,7 @@ VM_LIST=$(curl --noproxy '*' -s -k -X GET \
 
 ### === Step 3: Test SSH connections in parallel ===
 
-echo "# HELP ssh_connection_up SSH connectivity status (0=connection ok, 1=connection error)."
+echo "# HELP ssh_connection_up SSH connectivity status (1=connection up, 0=connection error)."
 echo "# TYPE ssh_connection_up gauge"
 echo "# HELP ssh_connection_latency_seconds SSH connection latency in seconds (0 if failed)."
 echo "# TYPE ssh_connection_latency_seconds gauge"
@@ -119,10 +119,10 @@ ssh_test() {
 
     local latency=0
     if [ $EXIT_CODE -eq 0 ]; then
-        status=0
+        status=1
         latency=$(awk "BEGIN {print $end_time - $start_time}")
     else
-        status=1
+        status=0
     fi
 
     # Print atomically using subshell
