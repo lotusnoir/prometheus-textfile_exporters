@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
-# Export Elastic Fleet agent statuses as Prometheus metrics
-# Save as /usr/local/bin/export_fleet_metrics.sh
-# chmod +x /usr/local/bin/export_fleet_metrics.sh
+# Export Elastic Fleet agent statuses as Prometheus metrics (stdout version)
+# Supports overriding via environment variables:
+#   KIBANA_URL="https://your-kibana" AUTH="user:password" ./export_fleet_metrics.sh
 
-TEXTFILE_DIR="/var/lib/node_exporter"
-METRICS_FILE="${TEXTFILE_DIR}/elastic_fleet.prom"
+set -euo pipefail
 
-KIBANA_URL="https://kibana.url.fr"
-AUTH="elastixc:xxxxxxxxxxxxxx"
+# --- Config (can be overridden via environment variables) ---
+KIBANA_URL="${KIBANA_URL:-https://kibana.url.fr}"
+AUTH="${AUTH:-elastixc:xxxxxxxxxxxxxx}"
 
 TMPDIR=$(mktemp -d)
 POLICIES="${TMPDIR}/policies.txt"
@@ -32,26 +32,24 @@ status_value() {
   esac
 }
 
-# --- Build metrics file ---
+# --- Output Prometheus metrics to stdout ---
+echo "# HELP elastic_fleet_enrollment_status Elastic Fleet agent enrollment status (1=online, 2=degraded, 0=offline)"
+echo "# TYPE elastic_fleet_enrollment_status gauge"
+
+awk -F'\t' 'NR==FNR {
+  id=$1
+  name=""
+  for (i=2; i<=NF; i++) name = name (i>2 ? " " : "") $i
+  map[id]=name
+  next
+}
 {
-  echo "# HELP elastic_fleet_enrollment_status Elastic Fleet agent enrollment status (1=online, 2=degraded, 0=offline)"
-  echo "# TYPE elastic_fleet_enrollment_status gauge"
+  policy = (map[$2] ? map[$2] : $2)
+  printf("%s\t%s\t%s\n", $1, policy, $3)
+}' "$POLICIES" "$AGENTS" |
+while IFS=$'\t' read -r host policy status; do
+  val=$(status_value "$status")
+  echo "elastic_fleet_enrollment_status{hostname=\"${host}\",policy=\"${policy}\"} ${val}"
+done
 
-  awk -F'\t' 'NR==FNR {
-    id=$1
-    name=""
-    for (i=2; i<=NF; i++) name = name (i>2 ? " " : "") $i
-    map[id]=name
-    next
-  }
-  {
-    policy = (map[$2] ? map[$2] : $2)
-    printf("%s\t%s\t%s\n", $1, policy, $3)
-  }' "$POLICIES" "$AGENTS" | while IFS=$'\t' read -r host policy status; do
-    val=$(status_value "$status")
-    echo "elastic_fleet_enrollment_status{hostname=\"${host}\",policy=\"${policy}\"} ${val}"
-  done
-} > "$METRICS_FILE"
-
-chmod 644 "$METRICS_FILE"
 rm -rf "$TMPDIR"
