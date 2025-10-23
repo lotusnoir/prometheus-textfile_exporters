@@ -76,3 +76,24 @@ while read -r cname image; do
   fi
   echo "docker_container_image_exists_remote{container=\"${cname}\",image=\"${image}\"} ${remote_value}"
 done
+
+# --------------------------
+# Docker container status
+# --------------------------
+# Retrieve all containers (running or not)
+containers=$(docker ps -a --format '{{.Names}} {{.State}}')
+
+echo "# HELP docker_container_status 1=running, 0=stopped/exited"
+echo "# TYPE docker_container_status gauge"
+
+while read -r name state; do
+  case "$state" in
+    running)
+      value=1
+      ;;
+    *)
+      value=0
+      ;;
+  esac
+  echo "docker_container_status{name=\"$name\",state=\"$state\"} $value"
+done <<< "$containers"
