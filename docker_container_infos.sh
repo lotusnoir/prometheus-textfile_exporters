@@ -103,7 +103,6 @@ done <<< "$containers"
 # --------------------------
 # Nombre total de conteneurs (tous états confondus)
 total=$(docker ps -aq | wc -l)
-echo ""
 echo "# HELP docker_container_total Number of Docker containers (all states)"
 echo "# TYPE docker_container_total gauge"
 echo "docker_container_total $total"
