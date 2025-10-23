@@ -22,7 +22,7 @@ echo "# HELP docker_container_restart_policy Restart policy of Docker containers
 echo "# TYPE docker_container_restart_policy gauge"
 
 docker inspect $(docker ps -aq) \
-  --format '{{ .Name }} {{ .HostConfig.RestartPolicy.Name }}' |
+  --format '{{ .Name }} {{ .HostConfig.RestartPolicy.Name }}' | sed 's|^/||' |
 while read -r cname policy; do
   case "$policy" in
     "") value=0 ;;
@@ -42,7 +42,7 @@ echo "# HELP docker_container_log_driver Logging driver used by Docker container
 echo "# TYPE docker_container_log_driver gauge"
 
 docker inspect $(docker ps -aq) \
-  --format '{{ .Name }} {{ .HostConfig.LogConfig.Type }}' |
+  --format '{{ .Name }} {{ .HostConfig.LogConfig.Type }}' | sed 's|^/||' |
 while read -r cname driver; do
   driver="${driver:-none}"
   echo "docker_container_log_driver{container=\"${cname}\",driver=\"${driver}\"} 1"
@@ -58,7 +58,7 @@ echo "# HELP docker_container_image_exists_remote Whether the image used by the 
 echo "# TYPE docker_container_image_exists_remote gauge"
 
 docker inspect $(docker ps -aq) \
-  --format '{{ .Name }} {{ .Config.Image }}' |
+  --format '{{ .Name }} {{ .Config.Image }}' | sed 's|^/||' |
 while read -r cname image; do
   # Local check
   if docker image inspect "$image" >/dev/null 2>&1; then
