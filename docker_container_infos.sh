@@ -38,9 +38,14 @@ done
 # --------------------------
 # Docker container log drivers
 # --------------------------
+echo "# HELP docker_global_log_driver Docker global logging driver"
+echo "# TYPE docker_global_log_driver gauge"
+global_driver=$(docker info --format '{{.LoggingDriver}}')
+global_driver="${global_driver:-unknown}"
+echo "docker_global_log_driver{driver=\"${global_driver}\"} 1"
+
 echo "# HELP docker_container_log_driver Logging driver used by Docker containers"
 echo "# TYPE docker_container_log_driver gauge"
-
 docker inspect $(docker ps -aq) \
   --format '{{ .Name }} {{ .HostConfig.LogConfig.Type }}' | sed 's|^/||' |
 while read -r cname driver; do
@@ -106,3 +111,5 @@ total=$(docker ps -aq | wc -l)
 echo "# HELP docker_container_total Number of Docker containers (all states)"
 echo "# TYPE docker_container_total gauge"
 echo "docker_container_total $total"
+
+
