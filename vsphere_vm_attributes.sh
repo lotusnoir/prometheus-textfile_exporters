@@ -7,7 +7,7 @@
 #  DESCRIPTION:  Extract VM attributes and tags from vSphere and emit Prometheus metrics
 #                to stdout for node_exporter textfile collector.
 #
-#  REQUIREMENTS: bash 4+, curl, jq
+#  REQUIREMENTS: bash 4+, eval curl, jq
 #       AUTHOR:  Philippe
 #      VERSION: 2.8
 #      CREATED: 2025-10-02
@@ -42,22 +42,22 @@ trap cleanup EXIT
 
 vsphere_get_ticket() {
     VSPHERE_TEMPFILE_COOKIE=$(mktemp)
-    curl -k -s ${PROXY} -u "${VSPHERE_USER}:${VSPHERE_PASS}" -X POST -c "$VSPHERE_TEMPFILE_COOKIE" "${VSPHERE_URL}/rest/com/vmware/cis/session" > /dev/null
+    eval curl -k -s ${PROXY} -u "${VSPHERE_USER}:${VSPHERE_PASS}" -X POST -c "$VSPHERE_TEMPFILE_COOKIE" "${VSPHERE_URL}/rest/com/vmware/cis/session" > /dev/null
 }
 
 vsphere_list_tags_category() {
-    curl -k -s ${PROXY} -b "$VSPHERE_TEMPFILE_COOKIE" "${VSPHERE_URL}/api/cis/tagging/category" | \
+    eval curl -k -s ${PROXY} -b "$VSPHERE_TEMPFILE_COOKIE" "${VSPHERE_URL}/api/cis/tagging/category" | \
     jq -r 'if type=="object" and has("value") then .value else . end | .[]'
 }
 
 vsphere_list_tags() {
-    curl -k -s ${PROXY} -b "$VSPHERE_TEMPFILE_COOKIE" "${VSPHERE_URL}/api/cis/tagging/tag" | \
+    eval curl -k -s ${PROXY} -b "$VSPHERE_TEMPFILE_COOKIE" "${VSPHERE_URL}/api/cis/tagging/tag" | \
     jq -r 'if type=="object" and has("value") then .value else . end | .[]'
 }
 
 vsphere_get_tagcategoryname_from_id() {
     local TAG_CAT_ID=$1
-    curl -k -s ${PROXY} -b "$VSPHERE_TEMPFILE_COOKIE" "${VSPHERE_URL}/api/cis/tagging/category/$TAG_CAT_ID" | jq -r '.name'
+    eval curl -k -s ${PROXY} -b "$VSPHERE_TEMPFILE_COOKIE" "${VSPHERE_URL}/api/cis/tagging/category/$TAG_CAT_ID" | jq -r '.name'
 }
 
 vsphere_generate_prometheus_metrics() {
@@ -75,7 +75,7 @@ vsphere_generate_prometheus_metrics() {
     # Fetch VMs and apply filters
     declare -A vm_names
     mapfile -t vm_lines < <(
-        curl -k -s ${PROXY} -b "$VSPHERE_TEMPFILE_COOKIE" "${VSPHERE_URL}/rest/vcenter/vm" \
+        eval curl -k -s ${PROXY} -b "$VSPHERE_TEMPFILE_COOKIE" "${VSPHERE_URL}/rest/vcenter/vm" \
         | jq -c --arg exclude_regex "$EXCLUDE_REGEX" --arg include_regex "$INCLUDE_REGEX" '
             if type=="object" and has("value") then .value else . end
             | .[]
@@ -101,7 +101,7 @@ vsphere_generate_prometheus_metrics() {
     # Fetch all tags
     mapfile -t tag_ids < <(vsphere_list_tags)
     for tag_id in "${tag_ids[@]}"; do
-        tag_info=$(curl -k -s ${PROXY} -b "$VSPHERE_TEMPFILE_COOKIE" "${VSPHERE_URL}/api/cis/tagging/tag/$tag_id")
+        tag_info=$(eval curl -k -s ${PROXY} -b "$VSPHERE_TEMPFILE_COOKIE" "${VSPHERE_URL}/api/cis/tagging/tag/$tag_id")
         tag_name=$(echo "$tag_info" | jq -r '.name')
         cat_id=$(echo "$tag_info" | jq -r '.category_id')
         cat_name="${tag_categories[$cat_id]}"
@@ -115,7 +115,7 @@ vsphere_generate_prometheus_metrics() {
     done
 
     # Fetch all VM tag associations
-    all_vm_tags=$(curl -k -s ${PROXY} -b "$VSPHERE_TEMPFILE_COOKIE" --url "${VSPHERE_URL}/api/vcenter/tagging/associations" | jq -c '.associations[]')
+    all_vm_tags=$(eval curl -k -s ${PROXY} -b "$VSPHERE_TEMPFILE_COOKIE" --url "${VSPHERE_URL}/api/vcenter/tagging/associations" | jq -c '.associations[]')
 
     # Generate metrics per VM
 for vm_id in "${!vm_names[@]}"; do
