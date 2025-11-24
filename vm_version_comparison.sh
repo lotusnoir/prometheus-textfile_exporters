@@ -37,6 +37,12 @@ declare -A apps=(
     ["redis_exporter"]="/usr/local/bin/redis_exporter https://api.github.com/repos/oliver006/redis_exporter/releases/latest"
     ["alloy"]="/usr/local/bin/redis_exporter https://api.github.com/repos/grafana/alloy/releases/latest"
     ["controlm"]="/opt/controlM_agent https://docs.bmc.com/xwiki/bin/view/Control-M-Orchestration/Control-M/workloadautomation [0-9]+\.[0-9]+\.[0-9]+\.[0-9]{3}"
+    ["postgresql_exporter"]="/usr/local/bin/postgres_exporter https://api.github.com/repos/prometheus-community/postgres_exporter/releases/latest" 
+    ["mysqld_exporter"]="/usr/local/bin/mysqld_exporter https://api.github.com/repos/prometheus/mysqld_exporter/releases/latest" 
+    ["logstash_exporter"]="/usr/local/bin/logstash-exporter https://api.github.com/repos/lotusnoir/prometheus-logstash-exporter/releases/latest"
+
+    #["haproxy"]="
+    #["kafka_exporter"]="
 )
 
 ########################################################################
@@ -51,35 +57,21 @@ get_installed_version() {
     case "$app" in
         "conntrack_exporter") echo "0.3.1" ;;
         "rsyslog_exporter") echo "1.1.0" ;;
-        "consul") 
-            "$binary_path" --version | head -1| awk '{print $2}' | sed 's/v//'
-            ;;
-        "consul_exporter") 
+        "logstash_exporter") echo "0.7.15" ;;
+        "consul_exporter" | "systemd_exporter" | "postgresql_exporter" | "mysqld_exporter" | "squid_exporter") 
             "$binary_path" --version 2>&1 | grep -oP 'version \K[0-9.]+' | head -1
             ;;
-        "systemd_exporter") 
-            "$binary_path" --version 2>&1 | grep -oP 'version \K[0-9.]+' | head -1
+        "consul" | "fluentbit" | "cadvisor" | "alloy") 
+            "$binary_path" --version | head -1 | awk '{print $3}' | sed 's/v//'
             ;;
         "keepalived_exporter")
             "$binary_path" -version 2>&1 | awk '{print $2}'
-            ;;
-        "fluentbit") 
-            "$binary_path" --version | head -1| awk '{print $3}' | sed 's/v//'
-            ;;
-        "cadvisor") 
-            "$binary_path" --version | head -1| awk '{print $3}' | sed 's/v//'
             ;;
         "snoopy")
             "$binary_path" version | head -1 | awk '{print $NF}'
             ;;
         "traefikee")
             docker exec -it traefik_proxy sh -c "traefikee version" | head -1 | awk '{print $2}' | sed 's/v//'
-            ;;
-        "squid_exporter") 
-            "$binary_path" --version 2>&1 | grep -oP 'version \K[0-9.]+' | head -1
-            ;;
-        "alloy") 
-            "$binary_path" --version | head -1 | awk '{print $3}' | sed 's/v//'
             ;;
         "controlm") 
            grep CODE_VERSION ${binary_path}/ctm/data/CONFIG.dat | awk '{print $NF}'
