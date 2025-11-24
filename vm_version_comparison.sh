@@ -36,7 +36,7 @@ declare -A apps=(
     ["process_exporter"]="/usr/local/bin/process_exporter https://api.github.com/repos/ncabatoff/process-exporter/releases/latest"
     ["redis_exporter"]="/usr/local/bin/redis_exporter https://api.github.com/repos/oliver006/redis_exporter/releases/latest"
     ["alloy"]="/usr/local/bin/redis_exporter https://api.github.com/repos/grafana/alloy/releases/latest"
-    ["controlm"]="/opt/controlM_agent https://docs.bmc.com/xwiki/bin/view/Control-M-Orchestration/Control-M/workloadautomation/"
+    ["controlm"]="/opt/controlM_agent https://docs.bmc.com/xwiki/bin/view/Control-M-Orchestration/Control-M/workloadautomation [0-9]+\.[0-9]+\.[0-9]+\.[0-9]{3}"
 )
 
 ########################################################################
@@ -116,7 +116,8 @@ process_app() {
     local app="$1"
     local binary_path="$2"
     local repo_url="$3"
-    local version_pattern="${4:-[0-9]{1,4}\\.[0-9]{1,4}\\.[0-9]{1,4}}"
+    local default_pattern='[0-9]\{1,4\}\.[0-9]\{1,4\}\.[0-9]\{1,4\}'
+    local version_pattern="${4:-$default_pattern}"
     local prefix=$(echo "$app" | tr '[:lower:]' '[:upper:]' | tr '-' '_')
 
     # Special case for traefikee (docker container)
@@ -124,7 +125,7 @@ process_app() {
         if [ ! -f "/usr/bin/docker" ] || [ "$(docker ps -a | grep -c traefik_proxy)" -ne "1" ]; then
             return
         fi
-    elif [ ! -f "$binary_path" ]; then
+    elif [ ! -e "$binary_path" ]; then
         return
     fi
 
@@ -151,7 +152,7 @@ process_app() {
     #echo "         version_latest_major=$version_latest_major"
 
     # Version validation and comparison
-    if [ "$(echo "$version" | grep -c -E '[0-9]{1,4}\.[0-9]{1,4}\.{1,4}')" -eq "1" ] && [ "$(echo "$version_latest" | grep -c -E '[0-9]{1,4}\.[0-9]{1,4}\.{1,4}')" -eq "1" ]; then 
+    if [ "$(echo "$version" | grep -c -E "$version_pattern")" -eq "1" ] && [ "$(echo "$version_latest" | grep -c -E "$version_pattern")" -eq "1" ]; then 
         declare -g "${prefix}_VERSION_SCRAPE"=1
         [ "$version" == "$version_latest" ] && declare -g "${prefix}_VERSION_MATCH"=1 || declare -g "${prefix}_VERSION_MATCH"=0
         [ "$version_major" == "$version_latest_major" ] && declare -g "${prefix}_VERSION_MAJOR_MATCH"=1 || declare -g "${prefix}_VERSION_MAJOR_MATCH"=0
@@ -164,9 +165,9 @@ process_app() {
 ## Main processing
 #####################################
 for app in "${!apps[@]}"; do
-    IFS=' ' read -r path url <<< "${apps[$app]}"
-    #echo "START: processing: $app - $path - $url"
-    process_app "$app" "$path" "$url"
+    IFS=' ' read -r path url pattern <<< "${apps[$app]}"
+    #echo "START: processing: $app - $path - $url" - "$pattern"
+    process_app "$app" "$path" "$url" "$pattern"
 done
 
 
