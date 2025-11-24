@@ -139,6 +139,7 @@ process_app() {
             if [ "$(docker ps -a | grep -c ${binary})" -ne "1" ]; then
                 return
             fi
+	fi
     elif [ "$app" == "freeradius" ]; then
 	if [ "$binary_path" == "docker" ]; then
 	    container_name=$(docker ps -a --format '{{.Image}} {{.Names}}' | grep freeradius-server | awk '{print $2}')
