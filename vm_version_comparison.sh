@@ -42,6 +42,7 @@ declare -A apps=(
     ["postgresql_exporter"]="/usr/local/bin/postgres_exporter https://api.github.com/repos/prometheus-community/postgres_exporter/releases/latest 0.18.1"
     ["mysqld_exporter"]="/usr/local/bin/mysqld_exporter https://api.github.com/repos/prometheus/mysqld_exporter/releases/latest 0.18.0"
     ["logstash_exporter"]="/usr/local/bin/logstash-exporter https://api.github.com/repos/lotusnoir/prometheus-logstash-exporter/releases/latest 0.7.15"
+    ["victoriametrics"]="none https://api.github.com/repos/VictoriaMetrics/VictoriaMetrics/releases/latest 1.130.0"
 
     #["haproxy"]="
     #["kafka_exporter"]="
@@ -76,6 +77,9 @@ get_installed_version() {
             ;;
         "traefikee")
             docker exec -it traefik_proxy sh -c "traefikee version" | head -1 | awk '{print $2}' | sed 's/v//'
+            ;;
+        "victoriametrics")
+	    docker exec -it vmstorage sh -c "./vmstorage-prod -version" | grep -o -E '[0-9]{1,4}\.[0-9]{1,4}\.[0-9]{1,4}' | tr -d '[:space:]'
             ;;
         "controlm")
            grep CODE_VERSION ${binary_path}/ctm/data/CONFIG.dat | awk '{print $NF}'
@@ -120,6 +124,10 @@ process_app() {
     # Special case for traefikee (docker container)
     if [ "$app" == "traefikee" ]; then
         if [ ! -f "/usr/bin/docker" ] || [ "$(docker ps -a | grep -c traefik_proxy)" -ne "1" ]; then
+            return
+        fi
+    elif [ "$app" == "victoriametrics" ]; then
+        if [ ! -f "/usr/bin/vmstorage" ] || [ "$(docker ps -a | grep -c vmstorage)" -ne "1" ]; then
             return
         fi
     elif [ ! -e "$binary_path" ]; then
