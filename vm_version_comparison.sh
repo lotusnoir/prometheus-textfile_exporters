@@ -136,6 +136,7 @@ process_app() {
     elif [ "$app" == "victoriametrics" ]; then
 	if [ "$binary_path" == "docker" ]; then
             binary=$(docker ps -a --format '{{.Names}}' | grep -E "vm(storage|select|insert)" | head -1)
+	    [ -z "$binary" ] && return
             if [ "$(docker ps -a | grep -c ${binary})" -ne "1" ]; then
                 return
             fi
@@ -143,6 +144,7 @@ process_app() {
     elif [ "$app" == "freeradius" ]; then
 	if [ "$binary_path" == "docker" ]; then
 	    container_name=$(docker ps -a --format '{{.Image}} {{.Names}}' | grep freeradius-server | awk '{print $2}')
+	    [ -z "$container_name" ] && return 
 	    if [ "$(docker ps -a | grep -c "${container_name}")" -ne "1" ]; then
 	          return
 	    fi
