@@ -16,7 +16,8 @@ fi
 PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 PROBLEM_COUNT=0
 PRINT=0
-INTERNET_SCRAPE=0
+# Check on internet or take tab value (default)
+INTERNET_SCRAPE="${INTERNET_SCRAPE:-0}"
 
 # Define applications with their paths and repository URLs
 declare -A apps=(
@@ -38,7 +39,7 @@ declare -A apps=(
     ["redis_exporter"]="/usr/local/bin/redis_exporter https://api.github.com/repos/oliver006/redis_exporter/releases/latest 1.80.1"
     ["alloy"]="/usr/local/bin/redis_exporter https://api.github.com/repos/grafana/alloy/releases/latest 1.11.3"
     ["controlm"]="/opt/controlM_agent https://docs.bmc.com/xwiki/bin/view/Control-M-Orchestration/Control-M/workloadautomation 9.0.22.050 [0-9]+\.[0-9]+\.[0-9]+\.[0-9]{3}"
-    ["postgresql_exporter"]="/usr/local/bin/postgres_exporter https://api.github.com/repos/prometheus-community/postgres_exporter/releases/latest 0.18.1" 
+    ["postgresql_exporter"]="/usr/local/bin/postgres_exporter https://api.github.com/repos/prometheus-community/postgres_exporter/releases/latest 0.18.1"
     ["mysqld_exporter"]="/usr/local/bin/mysqld_exporter https://api.github.com/repos/prometheus/mysqld_exporter/releases/latest 0.18.0"
     ["logstash_exporter"]="/usr/local/bin/logstash-exporter https://api.github.com/repos/lotusnoir/prometheus-logstash-exporter/releases/latest 0.7.15"
 
@@ -49,21 +50,23 @@ declare -A apps=(
 ########################################################################
 ### Functions
 ########################################################################
-
 # Get installed version
 get_installed_version() {
     local app="$1"
     local binary_path="$2"
-    
+
     case "$app" in
         "conntrack_exporter") echo "0.3.1" ;;
         "rsyslog_exporter") echo "1.1.0" ;;
         "logstash_exporter") echo "0.7.15" ;;
-        "consul_exporter" | "systemd_exporter" | "postgresql_exporter" | "mysqld_exporter" | "squid_exporter") 
+        "consul_exporter" | "systemd_exporter" | "postgresql_exporter" | "mysqld_exporter" | "squid_exporter")
             "$binary_path" --version 2>&1 | grep -oP 'version \K[0-9.]+' | head -1
             ;;
-        "consul" | "fluentbit" | "cadvisor" | "alloy") 
+        "fluentbit" | "cadvisor" | "alloy")
             "$binary_path" --version | head -1 | awk '{print $3}' | sed 's/v//'
+            ;;
+        "consul")
+            "$binary_path" --version | head -1 | awk '{print $2}' | sed 's/v//'
             ;;
         "keepalived_exporter")
             "$binary_path" -version 2>&1 | awk '{print $2}'
@@ -74,7 +77,7 @@ get_installed_version() {
         "traefikee")
             docker exec -it traefik_proxy sh -c "traefikee version" | head -1 | awk '{print $2}' | sed 's/v//'
             ;;
-        "controlm") 
+        "controlm")
            grep CODE_VERSION ${binary_path}/ctm/data/CONFIG.dat | awk '{print $NF}'
             ;;
         *)
@@ -110,7 +113,7 @@ process_app() {
     local binary_path="$2"
     local repo_url="$3"
     local version_latest="$4"
-    local default_pattern='[0-9]\{1,4\}\.[0-9]\{1,4\}\.[0-9]\{1,4\}'
+    local default_pattern='[0-9]{1,4}\.[0-9]{1,4}\.[0-9]{1,4}'
     local version_pattern="${5:-$default_pattern}"
     local prefix=$(echo "$app" | tr '[:lower:]' '[:upper:]' | tr '-' '_')
 
@@ -128,11 +131,12 @@ process_app() {
     # Get versions
     local version=$(get_installed_version "$app" "$binary_path")
     [ "$?" -ne "0" ] && PROBLEM_COUNT=$((PROBLEM_COUNT + 1))
-    
-    [ "$INTERNET_SCRAPE" != 0 ] && local version_latest=$(get_latest_version "$app" "$repo_url")
 
-    [ "$?" -ne "0" ] && PROBLEM_COUNT=$((PROBLEM_COUNT + 1))
-    
+    if [ "$INTERNET_SCRAPE" != 0 ]; then
+        local version_latest=$(get_latest_version "$app" "$repo_url")
+        [ "$?" -ne "0" ] && PROBLEM_COUNT=$((PROBLEM_COUNT + 1))
+    fi
+
     local version_major=${version%.*}
     local version_latest_major=${version_latest%.*}
 
@@ -147,7 +151,7 @@ process_app() {
     #echo "         version_latest_major=$version_latest_major"
 
     # Version validation and comparison
-    if [ "$(echo "$version" | grep -c -E "$version_pattern")" -eq "1" ] && [ "$(echo "$version_latest" | grep -c -E "$version_pattern")" -eq "1" ]; then 
+    if [ "$(echo "$version" | grep -c -E "$version_pattern")" -eq "1" ] && [ "$(echo "$version_latest" | grep -c -E "$version_pattern")" -eq "1" ]; then
         declare -g "${prefix}_VERSION_SCRAPE"=1
         [ "$version" == "$version_latest" ] && declare -g "${prefix}_VERSION_MATCH"=1 || declare -g "${prefix}_VERSION_MATCH"=0
         [ "$version_major" == "$version_latest_major" ] && declare -g "${prefix}_VERSION_MAJOR_MATCH"=1 || declare -g "${prefix}_VERSION_MAJOR_MATCH"=0
@@ -183,7 +187,7 @@ if [ "$PRINT" -eq "1" ]; then
       echo "version_comparison{application=\"$app\",installed=\"${!installed_var}\",latest=\"${!latest_var}\"} ${!match_var}"
     fi
   done
- 
+
   #####################################
   echo "# HELP version_comparison_major Check binary version and latest version only keeping the major version on repo project, 1 equals, 0 not equals"
   echo "# TYPE version_comparison_major gauge"
@@ -197,7 +201,7 @@ if [ "$PRINT" -eq "1" ]; then
       echo "version_comparison_major{application=\"$app\",installed=\"${!installed_var}\",latest=\"${!latest_var}\"} ${!match_var}"
     fi
   done
- 
+
   #####################################
   echo "# HELP version_comparison_scrape_success Check if versions were found 1 ok, 0 problem"
   echo "# TYPE version_comparison_scrape_success gauge"
@@ -212,7 +216,7 @@ if [ "$PRINT" -eq "1" ]; then
     scrape_var="${prefix}_VERSION_SCRAPE"
     if [ -n "${!scrape_var}" ]; then
         echo "version_comparison_scrape_success{application=\"$app\"} ${!scrape_var}"
-        
+
         # Check if value is not 1
         if [ "${!scrape_var}" -ne 1 ]; then
             all_ok=0
