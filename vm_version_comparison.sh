@@ -16,30 +16,31 @@ fi
 PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 PROBLEM_COUNT=0
 PRINT=0
+INTERNET_SCRAPE=0
 
 # Define applications with their paths and repository URLs
 declare -A apps=(
-    ["node_exporter"]="/usr/local/bin/node_exporter https://api.github.com/repos/prometheus/node_exporter/releases/latest"
-    ["chrony_exporter"]="/usr/local/bin/chrony_exporter https://api.github.com/repos/SuperQ/chrony_exporter/releases/latest"
-    ["conntrack_exporter"]="/usr/local/bin/conntrack_exporter https://api.github.com/repos/hiveco/conntrack_exporter/releases/latest"
-    ["blackbox_exporter"]="/usr/local/bin/blackbox_exporter https://api.github.com/repos/prometheus/blackbox_exporter/releases/latest"
-    ["rsyslog_exporter"]="/usr/local/bin/rsyslog_exporter https://api.github.com/repos/prometheus-community/rsyslog_exporter/releases/latest"
-    ["keepalived_exporter"]="/usr/bin/keepalived_exporter https://api.github.com/repos/gen2brain/keepalived_exporter/releases/latest"
-    ["fluentbit"]="/opt/fluent-bit/bin/fluent-bit https://api.github.com/repos/fluent/fluent-bit/releases/latest"
-    ["cadvisor"]="/opt/cadvisor/cadvisor https://api.github.com/repos/google/cadvisor/releases/latest"
-    ["consul"]="/usr/bin/consul https://api.github.com/repos/hashicorp/consul/releases/latest"
-    ["consul_exporter"]="/usr/local/bin/consul_exporter https://api.github.com/repos/prometheus/consul_exporter/releases/latest"
-    ["snoopy"]="/usr/sbin/snoopyctl https://api.github.com/repos/a2o/snoopy/releases/latest"
-    ["traefikee"]="none https://doc.traefik.io/traefik-enterprise/kb/release-notes/"
-    ["squid_exporter"]="/usr/local/bin/squid-exporter https://api.github.com/repos/boynux/squid-exporter/releases/latest"
-    ["systemd_exporter"]="/usr/local/bin/systemd_exporter https://api.github.com/repos/prometheus-community/systemd_exporter/releases/latest"
-    ["process_exporter"]="/usr/local/bin/process_exporter https://api.github.com/repos/ncabatoff/process-exporter/releases/latest"
-    ["redis_exporter"]="/usr/local/bin/redis_exporter https://api.github.com/repos/oliver006/redis_exporter/releases/latest"
-    ["alloy"]="/usr/local/bin/redis_exporter https://api.github.com/repos/grafana/alloy/releases/latest"
-    ["controlm"]="/opt/controlM_agent https://docs.bmc.com/xwiki/bin/view/Control-M-Orchestration/Control-M/workloadautomation [0-9]+\.[0-9]+\.[0-9]+\.[0-9]{3}"
-    ["postgresql_exporter"]="/usr/local/bin/postgres_exporter https://api.github.com/repos/prometheus-community/postgres_exporter/releases/latest" 
-    ["mysqld_exporter"]="/usr/local/bin/mysqld_exporter https://api.github.com/repos/prometheus/mysqld_exporter/releases/latest" 
-    ["logstash_exporter"]="/usr/local/bin/logstash-exporter https://api.github.com/repos/lotusnoir/prometheus-logstash-exporter/releases/latest"
+    ["node_exporter"]="/usr/local/bin/node_exporter https://api.github.com/repos/prometheus/node_exporter/releases/latest 1.10.2"
+    ["chrony_exporter"]="/usr/local/bin/chrony_exporter https://api.github.com/repos/SuperQ/chrony_exporter/releases/latest 0.12.1"
+    ["conntrack_exporter"]="/usr/local/bin/conntrack_exporter https://api.github.com/repos/hiveco/conntrack_exporter/releases/latest 0.3.1"
+    ["blackbox_exporter"]="/usr/local/bin/blackbox_exporter https://api.github.com/repos/prometheus/blackbox_exporter/releases/latest 0.27.0"
+    ["rsyslog_exporter"]="/usr/local/bin/rsyslog_exporter https://api.github.com/repos/prometheus-community/rsyslog_exporter/releases/latest 1.1.0"
+    ["keepalived_exporter"]="/usr/bin/keepalived_exporter https://api.github.com/repos/gen2brain/keepalived_exporter/releases/latest 0.7.1"
+    ["fluentbit"]="/opt/fluent-bit/bin/fluent-bit https://api.github.com/repos/fluent/fluent-bit/releases/latest 4.2.0"
+    ["cadvisor"]="/opt/cadvisor/cadvisor https://api.github.com/repos/google/cadvisor/releases/latest 0.53.0"
+    ["consul"]="/usr/bin/consul https://api.github.com/repos/hashicorp/consul/releases/latest 1.22.0"
+    ["consul_exporter"]="/usr/local/bin/consul_exporter https://api.github.com/repos/prometheus/consul_exporter/releases/latest 0.13.0"
+    ["snoopy"]="/usr/sbin/snoopyctl https://api.github.com/repos/a2o/snoopy/releases/latest 2.5.2"
+    ["traefikee"]="none https://doc.traefik.io/traefik-enterprise/kb/release-notes/ 2.12.5"
+    ["squid_exporter"]="/usr/local/bin/squid-exporter https://api.github.com/repos/boynux/squid-exporter/releases/latest 0.13.0"
+    ["systemd_exporter"]="/usr/local/bin/systemd_exporter https://api.github.com/repos/prometheus-community/systemd_exporter/releases/latest 0.7.0"
+    ["process_exporter"]="/usr/local/bin/process_exporter https://api.github.com/repos/ncabatoff/process-exporter/releases/latest 0.8.7"
+    ["redis_exporter"]="/usr/local/bin/redis_exporter https://api.github.com/repos/oliver006/redis_exporter/releases/latest 1.80.1"
+    ["alloy"]="/usr/local/bin/redis_exporter https://api.github.com/repos/grafana/alloy/releases/latest 1.11.3"
+    ["controlm"]="/opt/controlM_agent https://docs.bmc.com/xwiki/bin/view/Control-M-Orchestration/Control-M/workloadautomation 9.0.22.050 [0-9]+\.[0-9]+\.[0-9]+\.[0-9]{3}"
+    ["postgresql_exporter"]="/usr/local/bin/postgres_exporter https://api.github.com/repos/prometheus-community/postgres_exporter/releases/latest 0.18.1" 
+    ["mysqld_exporter"]="/usr/local/bin/mysqld_exporter https://api.github.com/repos/prometheus/mysqld_exporter/releases/latest 0.18.0"
+    ["logstash_exporter"]="/usr/local/bin/logstash-exporter https://api.github.com/repos/lotusnoir/prometheus-logstash-exporter/releases/latest 0.7.15"
 
     #["haproxy"]="
     #["kafka_exporter"]="
@@ -108,8 +109,9 @@ process_app() {
     local app="$1"
     local binary_path="$2"
     local repo_url="$3"
+    local version_latest="$4"
     local default_pattern='[0-9]\{1,4\}\.[0-9]\{1,4\}\.[0-9]\{1,4\}'
-    local version_pattern="${4:-$default_pattern}"
+    local version_pattern="${5:-$default_pattern}"
     local prefix=$(echo "$app" | tr '[:lower:]' '[:upper:]' | tr '-' '_')
 
     # Special case for traefikee (docker container)
@@ -127,7 +129,8 @@ process_app() {
     local version=$(get_installed_version "$app" "$binary_path")
     [ "$?" -ne "0" ] && PROBLEM_COUNT=$((PROBLEM_COUNT + 1))
     
-    local version_latest=$(get_latest_version "$app" "$repo_url")
+    [ "$INTERNET_SCRAPE" != 0 ] && local version_latest=$(get_latest_version "$app" "$repo_url")
+
     [ "$?" -ne "0" ] && PROBLEM_COUNT=$((PROBLEM_COUNT + 1))
     
     local version_major=${version%.*}
@@ -157,9 +160,9 @@ process_app() {
 ## Main processing
 #####################################
 for app in "${!apps[@]}"; do
-    IFS=' ' read -r path url pattern <<< "${apps[$app]}"
-    #echo "START: processing: $app - $path - $url" - "$pattern"
-    process_app "$app" "$path" "$url" "$pattern"
+    IFS=' ' read -r path url version pattern <<< "${apps[$app]}"
+    #echo "START: processing: $app - $path - $url" - "$version" - "$pattern"
+    process_app "$app" "$path" "$url" "$version" "$pattern"
 done
 
 
