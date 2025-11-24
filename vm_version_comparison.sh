@@ -32,7 +32,6 @@ declare -A apps=(
     ["consul"]="/usr/bin/consul https://api.github.com/repos/hashicorp/consul/releases/latest 1.22.0"
     ["consul_exporter"]="/usr/local/bin/consul_exporter https://api.github.com/repos/prometheus/consul_exporter/releases/latest 0.13.0"
     ["snoopy"]="/usr/sbin/snoopyctl https://api.github.com/repos/a2o/snoopy/releases/latest 2.5.2"
-    ["traefikee"]="none https://doc.traefik.io/traefik-enterprise/kb/release-notes/ 2.12.5"
     ["squid_exporter"]="/usr/local/bin/squid-exporter https://api.github.com/repos/boynux/squid-exporter/releases/latest 0.13.0"
     ["systemd_exporter"]="/usr/local/bin/systemd_exporter https://api.github.com/repos/prometheus-community/systemd_exporter/releases/latest 0.7.0"
     ["process_exporter"]="/usr/local/bin/process_exporter https://api.github.com/repos/ncabatoff/process-exporter/releases/latest 0.8.7"
@@ -42,7 +41,10 @@ declare -A apps=(
     ["postgresql_exporter"]="/usr/local/bin/postgres_exporter https://api.github.com/repos/prometheus-community/postgres_exporter/releases/latest 0.18.1"
     ["mysqld_exporter"]="/usr/local/bin/mysqld_exporter https://api.github.com/repos/prometheus/mysqld_exporter/releases/latest 0.18.0"
     ["logstash_exporter"]="/usr/local/bin/logstash-exporter https://api.github.com/repos/lotusnoir/prometheus-logstash-exporter/releases/latest 0.7.15"
-    ["victoriametrics"]="none https://api.github.com/repos/VictoriaMetrics/VictoriaMetrics/releases/latest 1.130.0"
+    ["traefikee"]="docker https://doc.traefik.io/traefik-enterprise/kb/release-notes/ 2.12.5"
+    ["victoriametrics"]="docker https://api.github.com/repos/VictoriaMetrics/VictoriaMetrics/releases/latest 1.130.0"
+    ["freeradius"]="docker https://api.github.com/repos/FreeRADIUS/freeradius-server/releases/latest 3.2.8"
+    ["freeradius_exporter"]="docker https://api.github.com/repos/bvantagelimited/freeradius_exporter/releases/latest 0.1.9"
 
     #["haproxy"]="
     #["kafka_exporter"]="
@@ -78,8 +80,13 @@ get_installed_version() {
         "traefikee")
             docker exec -it traefik_proxy sh -c "traefikee version" | head -1 | awk '{print $2}' | sed 's/v//'
             ;;
+        "freeradius")
+	    container_name=$(docker ps -a --format '{{.Image}} {{.Names}}' | grep freeradius-server | awk '{print $2}')
+	    docker exec -it $container_name sh -c "freeradius -v" | head -1 | awk '{print $4}'| tr -d '[:space:]'
+            ;;
         "victoriametrics")
-	    docker exec -it vmstorage sh -c "./vmstorage-prod -version" | grep -o -E '[0-9]{1,4}\.[0-9]{1,4}\.[0-9]{1,4}' | tr -d '[:space:]'
+	    binary=$(docker ps -a --format '{{.Names}}' | grep -E "vm(storage|select|insert)" | head -1)
+	    docker exec -it "$binary" sh -c "./${binary}-prod -version" | grep -o -E '[0-9]{1,4}\.[0-9]{1,4}\.[0-9]{1,4}' | tr -d '[:space:]'
             ;;
         "controlm")
            grep CODE_VERSION ${binary_path}/ctm/data/CONFIG.dat | awk '{print $NF}'
@@ -127,9 +134,16 @@ process_app() {
             return
         fi
     elif [ "$app" == "victoriametrics" ]; then
-        if [ ! -f "/usr/bin/vmstorage" ] || [ "$(docker ps -a | grep -c vmstorage)" -ne "1" ]; then
+        [ "$binary_path" == "docker" ] && binary=$(docker ps -a --format '{{.Names}}' | grep -E "vm(storage|select|insert)" | head -1)
+        if [ ! -f "/usr/bin/${binary}" ] && [ "$(docker ps -a | grep -c ${binary})" -ne "1" ]; then
             return
         fi
+    elif [ "$app" == "freeradius" ]; then
+	[ "$binary_path" == "docker" ] && container_name=$(docker ps -a --format '{{.Image}} {{.Names}}' | grep freeradius-server | awk '{print $2}')
+        if [ ! -f "/usr/bin/${binary}" ] && [ "$(docker ps -a | grep -c ${container_name})" -ne "1" ]; then
+            return
+        fi
+
     elif [ ! -e "$binary_path" ]; then
         return
     fi
