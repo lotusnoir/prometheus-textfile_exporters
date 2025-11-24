@@ -78,15 +78,15 @@ get_installed_version() {
             "$binary_path" version | head -1 | awk '{print $NF}'
             ;;
         "traefikee")
-            docker exec -it traefik_proxy sh -c "traefikee version" | head -1 | awk '{print $2}' | sed 's/v//'
+            docker exec traefik_proxy sh -c "traefikee version" | head -1 | awk '{print $2}' | sed 's/v//'
             ;;
         "freeradius")
 	    container_name=$(docker ps -a --format '{{.Image}} {{.Names}}' | grep freeradius-server | awk '{print $2}')
-	    docker exec -it $container_name sh -c "freeradius -v" | head -1 | awk '{print $4}'| tr -d '[:space:]'
+	    docker exec "$container_name" sh -c "freeradius -v" | head -1 | awk '{print $4}'| tr -d '[:space:]'
             ;;
         "victoriametrics")
 	    binary=$(docker ps -a --format '{{.Names}}' | grep -E "vm(storage|select|insert)" | head -1)
-	    docker exec -it "$binary" sh -c "./${binary}-prod -version" | grep -o -E '[0-9]{1,4}\.[0-9]{1,4}\.[0-9]{1,4}' | tr -d '[:space:]'
+	    docker exec "$binary" sh -c "./${binary}-prod -version" | grep -o -E '[0-9]{1,4}\.[0-9]{1,4}\.[0-9]{1,4}' | tr -d '[:space:]'
             ;;
         "controlm")
            grep CODE_VERSION ${binary_path}/ctm/data/CONFIG.dat | awk '{print $NF}'
@@ -134,16 +134,18 @@ process_app() {
             return
         fi
     elif [ "$app" == "victoriametrics" ]; then
-        [ "$binary_path" == "docker" ] && binary=$(docker ps -a --format '{{.Names}}' | grep -E "vm(storage|select|insert)" | head -1)
-        if [ ! -f "/usr/bin/${binary}" ] && [ "$(docker ps -a | grep -c ${binary})" -ne "1" ]; then
-            return
-        fi
+	if [ "$binary_path" == "docker" ]; then
+            binary=$(docker ps -a --format '{{.Names}}' | grep -E "vm(storage|select|insert)" | head -1)
+            if [ "$(docker ps -a | grep -c ${binary})" -ne "1" ]; then
+                return
+            fi
     elif [ "$app" == "freeradius" ]; then
-	[ "$binary_path" == "docker" ] && container_name=$(docker ps -a --format '{{.Image}} {{.Names}}' | grep freeradius-server | awk '{print $2}')
-        if [ ! -f "/usr/bin/${binary}" ] && [ "$(docker ps -a | grep -c ${container_name})" -ne "1" ]; then
-            return
+	if [ "$binary_path" == "docker" ]; then
+	    container_name=$(docker ps -a --format '{{.Image}} {{.Names}}' | grep freeradius-server | awk '{print $2}')
+	    if [ "$(docker ps -a | grep -c "${container_name}")" -ne "1" ]; then
+	          return
+	    fi
         fi
-
     elif [ ! -e "$binary_path" ]; then
         return
     fi
