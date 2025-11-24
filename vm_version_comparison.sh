@@ -36,6 +36,7 @@ declare -A apps=(
     ["process_exporter"]="/usr/local/bin/process_exporter https://api.github.com/repos/ncabatoff/process-exporter/releases/latest"
     ["redis_exporter"]="/usr/local/bin/redis_exporter https://api.github.com/repos/oliver006/redis_exporter/releases/latest"
     ["alloy"]="/usr/local/bin/redis_exporter https://api.github.com/repos/grafana/alloy/releases/latest"
+    ["controlm"]="/opt/controlM_agent https://docs.bmc.com/xwiki/bin/view/Control-M-Orchestration/Control-M/workloadautomation/"
 )
 
 ########################################################################
@@ -80,6 +81,9 @@ get_installed_version() {
         "alloy") 
             "$binary_path" --version | head -1 | awk '{print $3}' | sed 's/v//'
             ;;
+        "controlm") 
+           grep CODE_VERSION ${binary_path}/ctm/data/CONFIG.dat | awk '{print $NF}'
+            ;;
         *)
             "$binary_path" --version | head -1 | awk '{print $3}'
             ;;
@@ -97,6 +101,9 @@ get_latest_version() {
             ;;
         "snoopy")
             curl -s "$repo_url" | grep '"tag_name"' | tr -d '"' | awk '{print $NF}' | sed -e 's/[-,]//gi' -e 's/snoopy//'
+            ;;
+        "controlm")
+            curl -s "$repo_url" | grep -Eo '[0-9]+\.[0-9]+\.[0-9]+\.[0-9]{3}' | sort -ru | head -1
             ;;
         *)
             curl -s "$repo_url" | grep '"tag_name"' | tr -d '"' | awk '{print $NF}' | sed -r 's/[v,]//gi'
@@ -153,8 +160,9 @@ process_app() {
     fi
 }
 
+#####################################
 ## Main processing
-# Process each application
+#####################################
 for app in "${!apps[@]}"; do
     IFS=' ' read -r path url <<< "${apps[$app]}"
     #echo "START: processing: $app - $path - $url"
