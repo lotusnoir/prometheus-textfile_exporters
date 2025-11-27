@@ -70,7 +70,7 @@ INCLUDE_LIST=(${INCLUDE_LIST[@]:-("^vm-")})
 EXCLUDE_LIST=(${EXCLUDE_LIST[@]:-("vm-talos.*" "vm-windows.*" "vm-citrix.*")})
 MAX_JOBS=${MAX_JOBS:-20}
 SSH_TIMEOUT=${SSH_TIMEOUT:-30}
-SSH_OPTS="${SSH_OPTS:--o StrictHostKeyChecking=no -o ConnectTimeout=$SSH_TIMEOUT -o BatchMode=no}"
+SSH_OPTS="${SSH_OPTS:--o NumberOfPasswordPrompts=1 -o PasswordAuthentication=yes -o PubkeyAuthentication=no -o KbdInteractiveAuthentication=no  -o StrictHostKeyChecking=no -o ConnectTimeout=$SSH_TIMEOUT -o BatchMode=no}"
 
 ############################################################################
 ### === Step 1: Authenticate to vSphere API ===
@@ -108,28 +108,21 @@ echo "# TYPE ssh_connection_latency_seconds gauge"
 
 # Function to test SSH connection
 ssh_test() {
-    local vm_name=$1
-    local user=$2
-    local pass=$3
-
-    local start_time=$(date +%s.%N)
-    OUTPUT=$(timeout $SSH_TIMEOUT sshpass -p "$pass" ssh $SSH_OPTS -n "$user@$vm_name" "echo success" 2>&1)
-    EXIT_CODE=$?
-    local end_time=$(date +%s.%N)
+    local vm_name="$1"
+    local user="$2"
+    local pass="$3"
 
     local latency=0
-    if [ $EXIT_CODE -eq 0 ]; then
-        status=1
-        latency=$(awk "BEGIN {print $end_time - $start_time}")
-    else
-        status=0
-    fi
+    local start=$(date +%s.%N)
 
-    # Print atomically using subshell
-    {
-        echo "ssh_connection_up{vm=\"$vm_name\",user=\"$user\"} $status"
+    if sshpass -p "$pass" ssh $SSH_OPTS $user@$vm_name "exit" 2>/dev/null; then
+        local end=$(date +%s.%N)
+        latency=$(awk "BEGIN {print $end - $start}")
+        echo "ssh_connection_up{vm=\"$vm_name\",user=\"$user\"} 1"
         echo "ssh_connection_latency_seconds{vm=\"$vm_name\",user=\"$user\"} $latency"
-    } 
+    else
+        echo "ssh_connection_up{vm=\"$vm_name\",user=\"$user\"} 0"
+    fi
 }
 
 # Semaphore function to limit parallel jobs
