@@ -92,10 +92,8 @@ load_vsphere_credentials() {
 
 vsphere_get_ticket() {
     VSPHERE_TEMPFILE_COOKIE=$(mktemp)
-echo "${CURL_ARGS[@]}"
     curl "${CURL_ARGS[@]}" -u "${VSPHERE_USER}:${VSPHERE_PASS}" -X POST -c "$VSPHERE_TEMPFILE_COOKIE" \
          "${VSPHERE_URL}/rest/com/vmware/cis/session" >/dev/null
-echo $VSPHERE_TEMPFILE_COOKIE
 }
 
 vsphere_list_tags_category() {
