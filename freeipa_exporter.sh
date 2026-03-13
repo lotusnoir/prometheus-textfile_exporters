@@ -61,6 +61,11 @@ get_int() {
 # Start with a clean temp file
 > "${TEMP_FILE}"
 
+# Obtain Kerberos ticket for root (if using keytab)
+if command -v kinit &>/dev/null && [ -f /etc/krb5.keytab ]; then
+    kinit -k -t /etc/krb5.keytab host/$(hostname -f) 2>/dev/null
+fi
+
 ## 1. LDAP Connections (from netstat)
 #LDAP_CONNECTIONS=$(netstat -tn 2>/dev/null | grep -c ":389" || echo "0")
 #LDAP_CONNECTIONS=$(get_int "$LDAP_CONNECTIONS")
