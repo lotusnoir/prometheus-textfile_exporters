@@ -90,27 +90,26 @@ fi
 write_metric "freeipa_server_up" "${IPA_STATUS}" "IPA server ping status (1=up, 0=down)" "gauge"
 
 # 5. IPA Health Check metrics (if ipa-healthcheck is available)
+# 5. IPA Health Check metrics - CLEANED VERSION (no duplicates)
 if command -v ipa-healthcheck &>/dev/null; then
-    # Run healthcheck and count different severity levels
-    HEALTHCHECK_OUTPUT=$(ipa-healthcheck --output-type json 2>/dev/null)
+    # Run healthcheck and get JSON output
+    HEALTHCHECK_OUTPUT=$(ipa-healthcheck --output-type json 2>/dev/null | grep -v "^/usr/lib/python" | grep -v "deprecated")
     
     if [ -n "${HEALTHCHECK_OUTPUT}" ]; then
-        # Count errors
+        # Count by severity (keep these for overview)
         ERROR_COUNT=$(echo "${HEALTHCHECK_OUTPUT}" | grep -c '"result": "ERROR"' || echo "0")
         ERROR_COUNT=$(get_int "$ERROR_COUNT")
         write_metric "freeipa_healthcheck_errors" "${ERROR_COUNT}" "Number of ERROR severity health check failures" "gauge"
         
-        # Count warnings
         WARNING_COUNT=$(echo "${HEALTHCHECK_OUTPUT}" | grep -c '"result": "WARNING"' || echo "0")
         WARNING_COUNT=$(get_int "$WARNING_COUNT")
         write_metric "freeipa_healthcheck_warnings" "${WARNING_COUNT}" "Number of WARNING severity health check issues" "gauge"
         
-        # Critical issues
         CRITICAL_COUNT=$(echo "${HEALTHCHECK_OUTPUT}" | grep -c '"result": "CRITICAL"' || echo "0")
         CRITICAL_COUNT=$(get_int "$CRITICAL_COUNT")
         write_metric "freeipa_healthcheck_critical" "${CRITICAL_COUNT}" "Number of CRITICAL severity health check failures" "gauge"
         
-        # Overall health status (0=healthy, 1=warnings, 2=errors/critical)
+        # Overall health status
         if [ "${CRITICAL_COUNT}" -gt 0 ] || [ "${ERROR_COUNT}" -gt 0 ]; then
             OVERALL_HEALTH=2
         elif [ "${WARNING_COUNT}" -gt 0 ]; then
@@ -119,6 +118,46 @@ if command -v ipa-healthcheck &>/dev/null; then
             OVERALL_HEALTH=0
         fi
         write_metric "freeipa_health_status" "${OVERALL_HEALTH}" "Overall health status (0=healthy, 1=warnings, 2=errors/critical)" "gauge"
+        
+        # Write header for detailed health check metrics (only one family)
+        write_metric_header "freeipa_healthcheck_issues" "Health check issues with details" "gauge"
+        
+        # Parse JSON and create detailed metrics for each issue
+        if command -v jq &>/dev/null; then
+            # Use jq for proper JSON parsing
+            echo "$HEALTHCHECK_OUTPUT" | jq -c '.[]' 2>/dev/null | while read -r check; do
+                source=$(echo "$check" | jq -r '.source // "unknown"' | sed 's/[^a-zA-Z0-9:_-]/_/g')
+                check_name=$(echo "$check" | jq -r '.check // "unknown"' | sed 's/[^a-zA-Z0-9:_-]/_/g')
+                result=$(echo "$check" | jq -r '.result // "UNKNOWN"' | tr '[:upper:]' '[:lower:]')
+                
+                # Extract key and message from kw if available
+                key=$(echo "$check" | jq -r '.kw.key // ""' | sed 's/[^a-zA-Z0-9:_-]/_/g')
+                msg=$(echo "$check" | jq -r '.kw.msg // ""' | cut -c1-100 | sed 's/[^a-zA-Z0-9:_-]/_/g')
+                
+                # Build comprehensive labels
+                labels="source=\"${source}\",check=\"${check_name}\",result=\"${result}\""
+                [ -n "$key" ] && labels="${labels},key=\"${key}\""
+                [ -n "$msg" ] && labels="${labels},message=\"${msg}\""
+                
+                # Write metric with value 1 (issue exists)
+                write_metric_with_labels "freeipa_healthcheck_issues" "1" "${labels}"
+            done
+        else
+            # Fallback to grep/sed parsing
+            echo "$HEALTHCHECK_OUTPUT" | grep -o '{[^}]*}' | while read -r check_block; do
+                source=$(echo "$check_block" | grep -o '"source":"[^"]*"' | cut -d'"' -f4 | sed 's/[^a-zA-Z0-9:_-]/_/g')
+                check_name=$(echo "$check_block" | grep -o '"check":"[^"]*"' | cut -d'"' -f4 | sed 's/[^a-zA-Z0-9:_-]/_/g')
+                result=$(echo "$check_block" | grep -o '"result":"[^"]*"' | cut -d'"' -f4 | tr '[:upper:]' '[:lower:]')
+                key=$(echo "$check_block" | grep -o '"key":"[^"]*"' | cut -d'"' -f4 | sed 's/[^a-zA-Z0-9:_-]/_/g')
+                
+                if [ -n "$source" ] && [ -n "$check_name" ] && [ -n "$result" ]; then
+                    labels="source=\"${source}\",check=\"${check_name}\",result=\"${result}\""
+                    [ -n "$key" ] && labels="${labels},key=\"${key}\""
+                    
+                    write_metric_with_labels "freeipa_healthcheck_issues" "1" "${labels}"
+                fi
+            done
+        fi
     else
         # Healthcheck ran but produced no output
         write_metric "freeipa_healthcheck_errors" "0" "Number of ERROR severity health check failures" "gauge"
@@ -127,6 +166,7 @@ if command -v ipa-healthcheck &>/dev/null; then
         write_metric "freeipa_health_status" "0" "Overall health status (0=healthy, 1=warnings, 2=errors/critical)" "gauge"
     fi
 fi
+
 
 # 6. Service status - DETAILED PER SERVICE METRICS
 SERVICES_UP=0
@@ -168,7 +208,7 @@ if command -v ipactl &>/dev/null; then
     write_metric "freeipa_services_total" "${SERVICES_TOTAL}" "Total number of IPA services" "gauge"
 fi
 
-# 7. Replication status (FIXED VERSION - with roles and server info)
+# 7. Replication status - WITH DETAILED SEGMENT METRICS
 if command -v ipa &>/dev/null; then
     # Get domain level
     DOMAIN_LEVEL=$(ipa domainlevel-get 2>/dev/null | grep "domain level:" | awk '{print $NF}' || echo "1")
@@ -183,6 +223,79 @@ if command -v ipa &>/dev/null; then
         TOTAL_SEGMENTS=$(echo "$TOPOLOGY_OUTPUT" | grep -c "Segment name:" || echo "0")
         TOTAL_SEGMENTS=$(get_int "$TOTAL_SEGMENTS")
         write_metric "freeipa_topology_segments" "${TOTAL_SEGMENTS}" "Total number of topology segments (replication agreements)" "gauge"
+        
+        # Write header for segment metrics
+        write_metric_header "freeipa_topology_segment_info" "Topology segment information" "gauge"
+        
+        # Parse segment details
+        SEGMENT_NAME=""
+        LEFT_NODE=""
+        RIGHT_NODE=""
+        CONNECTIVITY=""
+        
+        while IFS= read -r line; do
+            # Extract segment details
+            if [[ "$line" =~ ^[[:space:]]+Segment[[:space:]]name:[[:space:]](.+)$ ]]; then
+                # If we have a previous segment, process it
+                if [ -n "$SEGMENT_NAME" ] && [ -n "$LEFT_NODE" ] && [ -n "$RIGHT_NODE" ]; then
+                    # Clean up values for labels
+                    seg_name_clean=$(echo "$SEGMENT_NAME" | sed 's/[^a-zA-Z0-9:_-]/_/g')
+                    left_node_clean=$(echo "$LEFT_NODE" | sed 's/[^a-zA-Z0-9:_-]/_/g')
+                    right_node_clean=$(echo "$RIGHT_NODE" | sed 's/[^a-zA-Z0-9:_-]/_/g')
+                    
+                    # Create labels
+                    labels="segment=\"${seg_name_clean}\",left_node=\"${left_node_clean}\",right_node=\"${right_node_clean}\""
+                    [ -n "$CONNECTIVITY" ] && labels="${labels},connectivity=\"${CONNECTIVITY}\""
+                    
+                    # Write metric with value 1 (segment exists)
+                    write_metric_with_labels "freeipa_topology_segment_info" "1" "${labels}"
+                fi
+                
+                # Start new segment
+                SEGMENT_NAME="${BASH_REMATCH[1]}"
+                LEFT_NODE=""
+                RIGHT_NODE=""
+                CONNECTIVITY=""
+            elif [[ "$line" =~ ^[[:space:]]+Left[[:space:]]node:[[:space:]](.+)$ ]]; then
+                LEFT_NODE="${BASH_REMATCH[1]}"
+            elif [[ "$line" =~ ^[[:space:]]+Right[[:space:]]node:[[:space:]](.+)$ ]]; then
+                RIGHT_NODE="${BASH_REMATCH[1]}"
+            elif [[ "$line" =~ ^[[:space:]]+Connectivity:[[:space:]](.+)$ ]]; then
+                CONNECTIVITY="${BASH_REMATCH[1]}"
+            fi
+        done <<< "$TOPOLOGY_OUTPUT"
+        
+        # Process the last segment
+        if [ -n "$SEGMENT_NAME" ] && [ -n "$LEFT_NODE" ] && [ -n "$RIGHT_NODE" ]; then
+            # Clean up values for labels
+            seg_name_clean=$(echo "$SEGMENT_NAME" | sed 's/[^a-zA-Z0-9:_-]/_/g')
+            left_node_clean=$(echo "$LEFT_NODE" | sed 's/[^a-zA-Z0-9:_-]/_/g')
+            right_node_clean=$(echo "$RIGHT_NODE" | sed 's/[^a-zA-Z0-9:_-]/_/g')
+            
+            # Create labels
+            labels="segment=\"${seg_name_clean}\",left_node=\"${left_node_clean}\",right_node=\"${right_node_clean}\""
+            [ -n "$CONNECTIVITY" ] && labels="${labels},connectivity=\"${CONNECTIVITY}\""
+            
+            # Write metric with value 1 (segment exists)
+            write_metric_with_labels "freeipa_topology_segment_info" "1" "${labels}"
+        fi
+        
+        # Also create metrics for segments involving this server
+        LOCAL_HOSTNAME=$(hostname -f)
+        
+        # Count segments where this server is left node
+        LEFT_COUNT=$(echo "$TOPOLOGY_OUTPUT" | grep -c "Left node:.*${LOCAL_HOSTNAME}" || echo "0")
+        LEFT_COUNT=$(get_int "$LEFT_COUNT")
+        write_metric_with_labels "freeipa_topology_segments_by_node" "${LEFT_COUNT}" "node=\"${LOCAL_HOSTNAME}\",role=\"left\""
+        
+        # Count segments where this server is right node
+        RIGHT_COUNT=$(echo "$TOPOLOGY_OUTPUT" | grep -c "Right node:.*${LOCAL_HOSTNAME}" || echo "0")
+        RIGHT_COUNT=$(get_int "$RIGHT_COUNT")
+        write_metric_with_labels "freeipa_topology_segments_by_node" "${RIGHT_COUNT}" "node=\"${LOCAL_HOSTNAME}\",role=\"right\""
+        
+        # Total segments for this server
+        TOTAL_FOR_SERVER=$((LEFT_COUNT + RIGHT_COUNT))
+        write_metric_with_labels "freeipa_topology_segments_total_by_node" "${TOTAL_FOR_SERVER}" "node=\"${LOCAL_HOSTNAME}\""
     fi
     
     # Check server roles
@@ -242,44 +355,7 @@ if command -v ipa &>/dev/null; then
     fi
 fi
 
-# Check replication agreements status
-if command -v ldapsearch &>/dev/null && [ -n "$LDAP_SOCKET" ]; then
-    # Look for entries with the nsds5ReplConflict attribute (real conflicts)
-    REPLICA_CONFLICTS=$(ldapsearch -LLL -Y EXTERNAL -H "$LDAPI_URL" -b "$BASE_DN" "(nsds5ReplConflict=*)" dn 2>/dev/null | grep -c "^dn:" || echo "0")
-    REPLICA_CONFLICTS=$(get_int "$REPLICA_CONFLICTS")
-    write_metric "freeipa_replication_conflicts" "${REPLICA_CONFLICTS}" "Number of replication conflicts" "gauge"
-    
-    # Check replication agreements with ACTUAL errors (not Error 0)
-    REPLICA_STATUS_OUTPUT=$(ldapsearch -LLL -Y EXTERNAL -H "$LDAPI_URL" -b "cn=mapping tree,cn=config" "(objectclass=nsds5replicationagreement)" nsds5replicaLastUpdateStatus 2>/dev/null)
-    
-    # Count agreements with issues (anything other than successful status)
-    REPLICA_WITH_ISSUES=0
-    while IFS= read -r line; do
-        if [[ "$line" =~ nsds5replicaLastUpdateStatus: ]]; then
-            # Check if it's NOT a success status
-            if ! echo "$line" | grep -q "Error (0)" && ! echo "$line" | grep -q "0 (0)"; then
-                REPLICA_WITH_ISSUES=$((REPLICA_WITH_ISSUES + 1))
-            fi
-        fi
-    done <<< "$REPLICA_STATUS_OUTPUT"
-    
-    REPLICA_WITH_ISSUES=$(get_int "$REPLICA_WITH_ISSUES")
-    write_metric "freeipa_replication_agreements_with_issues" "${REPLICA_WITH_ISSUES}" "Number of replication agreements with errors" "gauge"
-    
-    # Total number of replication agreements
-    REPLICA_TOTAL=$(echo "$REPLICA_STATUS_OUTPUT" | grep -c "^dn:" || echo "0")
-    REPLICA_TOTAL=$(get_int "$REPLICA_TOTAL")
-    write_metric "freeipa_replication_agreements_total" "${REPLICA_TOTAL}" "Total number of replication agreements" "gauge"
-    
-    # All agreements are healthy if with_issues = 0
-    if [ "$REPLICA_TOTAL" -gt 0 ] && [ "$REPLICA_WITH_ISSUES" -eq 0 ]; then
-        write_metric "freeipa_replication_healthy" "1" "Overall replication health (1=healthy, 0=issues)" "gauge"
-    else
-        write_metric "freeipa_replication_healthy" "0" "Overall replication health (1=healthy, 0=issues)" "gauge"
-    fi
-fi
-
-# 8. Certificate expiry (using getcert list)
+## 8. Certificate expiry (using getcert list)
 if command -v getcert &>/dev/null; then
     # Get certificate list
     CERT_LIST=$(getcert list 2>/dev/null)
@@ -290,80 +366,138 @@ if command -v getcert &>/dev/null; then
         TOTAL_CERTS=$(get_int "$TOTAL_CERTS")
         write_metric "freeipa_certificates_total" "${TOTAL_CERTS}" "Total number of certificates monitored by certmonger" "gauge"
         
-        # Count certificates by status
-        MONITORING_COUNT=$(echo "$CERT_LIST" | grep -c "status: MONITORING" || echo "0")
-        MONITORING_COUNT=$(get_int "$MONITORING_COUNT")
-        write_metric "freeipa_certificates_monitoring" "${MONITORING_COUNT}" "Number of certificates in MONITORING state" "gauge"
+        # Write header for per-certificate metrics
+        write_metric_header "freeipa_certificate_info" "Certificate information with expiry days" "gauge"
         
-        # Count certificates expiring soon (less than 30 days)
-        EXPIRING_SOON=0
-        EXPIRING_WARNING=0
-        EXPIRING_CRITICAL=0
+        # Parse certificates for per-certificate metrics
+        REQUEST_ID=""
+        CERT_NICKNAME=""
+        CERT_STATUS=""
+        CERT_EXPIRES=""
+        CERT_ISSUER=""
+        CERT_CA=""
+        CERT_SUBJECT=""
         
-        # Parse each certificate block for expiry dates
         while IFS= read -r line; do
-            if [[ "$line" =~ ^[[:space:]]*expires:[[:space:]](.+)$ ]]; then
-                expires="${BASH_REMATCH[1]}"
-                # Clean up the date string
-                expires=$(echo "$expires" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
-                expires_epoch=$(date -d "$expires" +%s 2>/dev/null)
-                
-                if [ -n "$expires_epoch" ] && [ "$expires_epoch" -gt 0 ] 2>/dev/null; then
-                    now_epoch=$(date +%s)
-                    days_left=$(( (expires_epoch - now_epoch) / 86400 ))
-                    
-                    # Ensure days_left is a valid number
-                    if [ -n "$days_left" ] && [ "$days_left" -eq "$days_left" ] 2>/dev/null; then
-                        if [ "$days_left" -lt 7 ] 2>/dev/null; then
-                            EXPIRING_CRITICAL=$((EXPIRING_CRITICAL + 1))
-                        elif [ "$days_left" -lt 15 ] 2>/dev/null; then
-                            EXPIRING_WARNING=$((EXPIRING_WARNING + 1))
-                        elif [ "$days_left" -lt 30 ] 2>/dev/null; then
-                            EXPIRING_SOON=$((EXPIRING_SOON + 1))
+            # New certificate block starts with "Request ID 'xxxx':"
+            if [[ "$line" =~ ^Request[[:space:]]ID[[:space:]]\'([^\']+)\': ]]; then
+                # If we have a previous certificate with at least an expiry date, process it
+                if [ -n "$REQUEST_ID" ] && [ -n "$CERT_EXPIRES" ]; then
+                    # Calculate days until expiry
+                    expires_epoch=$(date -d "$CERT_EXPIRES" +%s 2>/dev/null)
+                    if [ -n "$expires_epoch" ] && [ "$expires_epoch" -gt 0 ] 2>/dev/null; then
+                        now_epoch=$(date +%s)
+                        days_left=$(( (expires_epoch - now_epoch) / 86400 ))
+                        days_left=$(get_int "$days_left")
+                        
+                        # Determine the best identifier for this certificate
+                        if [ -n "$CERT_NICKNAME" ]; then
+                            cert_id="$CERT_NICKNAME"
+                            id_type="nickname"
+                        elif [ -n "$CERT_SUBJECT" ]; then
+                            # Extract CN from subject if possible
+                            if [[ "$CERT_SUBJECT" =~ CN=([^,]+) ]]; then
+                                cert_id="${BASH_REMATCH[1]}"
+                            else
+                                cert_id="$CERT_SUBJECT"
+                            fi
+                            id_type="subject"
+                        else
+                            cert_id="cert_${REQUEST_ID}"
+                            id_type="request_id"
                         fi
+                        
+                        # Clean up certificate name for label
+                        cert_id_clean=$(echo "$cert_id" | sed 's/[^a-zA-Z0-9:_-]/_/g' | cut -c1-100)
+                        
+                        # Create certificate info metric with all details
+                        labels="${id_type}=\"${cert_id_clean}\""
+                        [ -n "$CERT_STATUS" ] && labels="${labels},status=\"${CERT_STATUS}\""
+                        [ -n "$CERT_ISSUER" ] && labels="${labels},issuer=\"${CERT_ISSUER}\""
+                        [ -n "$CERT_CA" ] && labels="${labels},ca=\"${CERT_CA}\""
+                        [ -n "$REQUEST_ID" ] && labels="${labels},request_id=\"${REQUEST_ID}\""
+                        
+                        write_metric_with_labels "freeipa_certificate_info" "${days_left}" "${labels}"
                     fi
                 fi
-            fi
-        done <<< "$CERT_LIST"
-        
-        EXPIRING_SOON=$(get_int "$EXPIRING_SOON")
-        EXPIRING_WARNING=$(get_int "$EXPIRING_WARNING")
-        EXPIRING_CRITICAL=$(get_int "$EXPIRING_CRITICAL")
-        
-        write_metric "freeipa_certificates_expiring_soon" "${EXPIRING_SOON}" "Number of certificates expiring in 15-30 days" "gauge"
-        write_metric "freeipa_certificates_expiring_warning" "${EXPIRING_WARNING}" "Number of certificates expiring in 7-15 days" "gauge"
-        write_metric "freeipa_certificates_expiring_critical" "${EXPIRING_CRITICAL}" "Number of certificates expiring in less than 7 days" "gauge"
-        
-        # Get earliest expiry date
-        EARLIEST_EPOCH=0
-        while IFS= read -r line; do
-            if [[ "$line" =~ ^[[:space:]]*expires:[[:space:]](.+)$ ]]; then
-                expires="${BASH_REMATCH[1]}"
-                expires=$(echo "$expires" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
-                expires_epoch=$(date -d "$expires" +%s 2>/dev/null)
                 
-                if [ -n "$expires_epoch" ] && [ "$expires_epoch" -gt 0 ] 2>/dev/null; then
-                    if [ "$EARLIEST_EPOCH" -eq 0 ] || [ "$expires_epoch" -lt "$EARLIEST_EPOCH" ]; then
-                        EARLIEST_EPOCH=$expires_epoch
-                    fi
+                # Start new certificate - reset variables
+                REQUEST_ID="${BASH_REMATCH[1]}"
+                CERT_NICKNAME=""
+                CERT_STATUS=""
+                CERT_EXPIRES=""
+                CERT_ISSUER=""
+                CERT_CA=""
+                CERT_SUBJECT=""
+            fi
+            
+            # Extract certificate details - multiple patterns to catch all formats
+            if [[ "$line" =~ ^[[:space:]]+key[[:space:]]pair[[:space:]]storage:.*nickname=\'([^\']+)\' ]]; then
+                CERT_NICKNAME="${BASH_REMATCH[1]}"
+            elif [[ "$line" =~ ^[[:space:]]+certificate:.*nickname=\'([^\']+)\' ]]; then
+                # Some certificates might have nickname in certificate line instead
+                if [ -z "$CERT_NICKNAME" ]; then
+                    CERT_NICKNAME="${BASH_REMATCH[1]}"
                 fi
+            elif [[ "$line" =~ ^[[:space:]]+key[[:space:]]pair[[:space:]]storage:[[:space:]]type=FILE,location=\'([^\']+)\' ]]; then
+                # For FILE storage, use the filename as identifier
+                filename=$(basename "${BASH_REMATCH[1]}")
+                CERT_NICKNAME="${filename}"
+            elif [[ "$line" =~ ^[[:space:]]+status:[[:space:]](.+) ]]; then
+                CERT_STATUS="${BASH_REMATCH[1]}"
+            elif [[ "$line" =~ ^[[:space:]]+expires:[[:space:]](.+) ]]; then
+                CERT_EXPIRES="${BASH_REMATCH[1]}"
+            elif [[ "$line" =~ ^[[:space:]]+issuer:[[:space:]](.+) ]]; then
+                CERT_ISSUER="${BASH_REMATCH[1]}"
+            elif [[ "$line" =~ ^[[:space:]]+CA:[[:space:]](.+) ]]; then
+                CERT_CA="${BASH_REMATCH[1]}"
+            elif [[ "$line" =~ ^[[:space:]]+subject:[[:space:]](.+) ]]; then
+                CERT_SUBJECT="${BASH_REMATCH[1]}"
             fi
         done <<< "$CERT_LIST"
         
-        if [ "$EARLIEST_EPOCH" -gt 0 ] 2>/dev/null; then
-            now_epoch=$(date +%s)
-            DAYS_UNTIL_EARLIEST=$(( (EARLIEST_EPOCH - now_epoch) / 86400 ))
-            DAYS_UNTIL_EARLIEST=$(get_int "$DAYS_UNTIL_EARLIEST")
-            write_metric "freeipa_certificates_earliest_expiry_days" "${DAYS_UNTIL_EARLIEST}" "Days until the earliest certificate expiry" "gauge"
+        # Process the last certificate
+        if [ -n "$REQUEST_ID" ] && [ -n "$CERT_EXPIRES" ]; then
+            # Calculate days until expiry
+            expires_epoch=$(date -d "$CERT_EXPIRES" +%s 2>/dev/null)
+            if [ -n "$expires_epoch" ] && [ "$expires_epoch" -gt 0 ] 2>/dev/null; then
+                now_epoch=$(date +%s)
+                days_left=$(( (expires_epoch - now_epoch) / 86400 ))
+                days_left=$(get_int "$days_left")
+                
+                # Determine the best identifier for this certificate
+                if [ -n "$CERT_NICKNAME" ]; then
+                    cert_id="$CERT_NICKNAME"
+                    id_type="nickname"
+                elif [ -n "$CERT_SUBJECT" ]; then
+                    # Extract CN from subject if possible
+                    if [[ "$CERT_SUBJECT" =~ CN=([^,]+) ]]; then
+                        cert_id="${BASH_REMATCH[1]}"
+                    else
+                        cert_id="$CERT_SUBJECT"
+                    fi
+                    id_type="subject"
+                else
+                    cert_id="cert_${REQUEST_ID}"
+                    id_type="request_id"
+                fi
+                
+                # Clean up certificate name for label
+                cert_id_clean=$(echo "$cert_id" | sed 's/[^a-zA-Z0-9:_-]/_/g' | cut -c1-100)
+                
+                # Create certificate info metric with all details
+                labels="${id_type}=\"${cert_id_clean}\""
+                [ -n "$CERT_STATUS" ] && labels="${labels},status=\"${CERT_STATUS}\""
+                [ -n "$CERT_ISSUER" ] && labels="${labels},issuer=\"${CERT_ISSUER}\""
+                [ -n "$CERT_CA" ] && labels="${labels},ca=\"${CERT_CA}\""
+                [ -n "$REQUEST_ID" ] && labels="${labels},request_id=\"${REQUEST_ID}\""
+                
+                write_metric_with_labels "freeipa_certificate_info" "${days_left}" "${labels}"
+            fi
         fi
-    else
-        # No certificates found
-        write_metric "freeipa_certificates_total" "0" "Total number of certificates monitored by certmonger" "gauge"
-        write_metric "freeipa_certificates_expiring_soon" "0" "Number of certificates expiring in 15-30 days" "gauge"
-        write_metric "freeipa_certificates_expiring_warning" "0" "Number of certificates expiring in 7-15 days" "gauge"
-        write_metric "freeipa_certificates_expiring_critical" "0" "Number of certificates expiring in less than 7 days" "gauge"
     fi
 fi
+
 
 # 9. Basic system resources for IPA - with actual monitor data
 if command -v ldapsearch &>/dev/null && [ -n "$LDAP_SOCKET" ]; then
