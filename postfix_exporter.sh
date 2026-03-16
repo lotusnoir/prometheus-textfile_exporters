@@ -433,9 +433,18 @@ queue_age=${queue_age:-0}
 spam_burst=0
 (( sent_inc >= 100 )) && spam_burst=1
 
+if systemctl is-active --quiet postfix; then
+    POSTFIX_STATUS=1
+else
+    POSTFIX_STATUS=0
+fi
+
 # Write metrics
 {
     cat << EOF
+# HELP postfix_up (1 = active / 0 = down)
+# TYPE postfix_up counter
+postfix_up $POSTFIX_STATUS
 # HELP postfix_mail_sent_total Total number of sent emails
 # TYPE postfix_mail_sent_total counter
 postfix_mail_sent_total $sent_total
