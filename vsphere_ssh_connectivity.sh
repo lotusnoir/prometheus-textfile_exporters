@@ -70,7 +70,7 @@ INCLUDE_LIST=(${INCLUDE_LIST[@]:-("^vm-")})
 EXCLUDE_LIST=(${EXCLUDE_LIST[@]:-("vm-talos.*" "vm-windows.*" "vm-citrix.*")})
 MAX_JOBS=${MAX_JOBS:-20}
 SSH_TIMEOUT=${SSH_TIMEOUT:-30}
-SSH_OPTS="${SSH_OPTS:--o NumberOfPasswordPrompts=1 -o PasswordAuthentication=yes -o PubkeyAuthentication=no -o KbdInteractiveAuthentication=no  -o StrictHostKeyChecking=no -o ConnectTimeout=$SSH_TIMEOUT -o BatchMode=no}"
+SSH_OPTS="${SSH_OPTS:--o NumberOfPasswordPrompts=1 -o PasswordAuthentication=yes -o PubkeyAuthentication=no -o KbdInteractiveAuthentication=no -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o GlobalKnownHostsFile=/dev/null -o ConnectTimeout=$SSH_TIMEOUT -o BatchMode=no}"
 
 ############################################################################
 ### === Step 1: Authenticate to vSphere API ===
