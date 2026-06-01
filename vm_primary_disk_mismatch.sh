@@ -31,6 +31,17 @@ get_sda1_uuid() {
     blkid $(find_primary_disk) 2>/dev/null | grep -oP ' UUID="\K[^"]+' || true
 }
 
+find_grub_cfg() {
+    # Return the first grub.cfg path that exists, prefer grub2
+    if [ -f "/boot/grub2/grub.cfg" ]; then
+        echo "/boot/grub2/grub.cfg"
+    elif [ -f "/boot/grub/grub.cfg" ]; then
+        echo "/boot/grub/grub.cfg"
+    else
+        echo ""
+    fi
+}
+
 check_uuid_in_file() {
     local uuid="$1"
     local file="$2"
@@ -66,9 +77,10 @@ fi
 
 # --- UUID check ---
 SDA1_UUID=$(get_sda1_uuid)
+GRUB_CFG=$(find_grub_cfg)
 
 UUID_IN_FSTAB=$(check_uuid_in_file "$SDA1_UUID" "/etc/fstab")
-UUID_IN_GRUB=$(check_uuid_in_file "$SDA1_UUID" "/boot/grub/grub.cfg")
+UUID_IN_GRUB=$(check_uuid_in_file "$SDA1_UUID" "$GRUB_CFG")
 
 # UUID check fails if uuid is missing OR not found in either file
 UUID_FSTAB_CODE=0
@@ -79,7 +91,7 @@ if [ -z "$SDA1_UUID" ] || [ "$UUID_IN_FSTAB" -eq 0 ]; then
     PROBLEM_COUNT=$((PROBLEM_COUNT + 1))
 fi
 
-if [ -z "$SDA1_UUID" ] || [ "$UUID_IN_GRUB" -eq 0 ]; then
+if [ -z "$SDA1_UUID" ] || [ -z "$GRUB_CFG" ] || [ "$UUID_IN_GRUB" -eq 0 ]; then
     UUID_GRUB_CODE=1
     PROBLEM_COUNT=$((PROBLEM_COUNT + 1))
 fi
@@ -100,10 +112,10 @@ echo "# HELP node_disk_uuid_missing Check if /dev/sda1 UUID is referenced in boo
 echo "# TYPE node_disk_uuid_missing gauge"
 if [ -z "$SDA1_UUID" ]; then
     echo "node_disk_uuid_missing{file=\"/etc/fstab\",uuid=\"unknown\"} $UUID_FSTAB_CODE"
-    echo "node_disk_uuid_missing{file=\"/boot/grub/grub.cfg\",uuid=\"unknown\"} $UUID_GRUB_CODE"
+    echo "node_disk_uuid_missing{file=\"$GRUB_CFG\",uuid=\"unknown\"} $UUID_GRUB_CODE"
 else
     echo "node_disk_uuid_missing{file=\"/etc/fstab\",uuid=\"$SDA1_UUID\"} $UUID_FSTAB_CODE"
-    echo "node_disk_uuid_missing{file=\"/boot/grub/grub.cfg\",uuid=\"$SDA1_UUID\"} $UUID_GRUB_CODE"
+    echo "node_disk_uuid_missing{file=\"$GRUB_CFG\",uuid=\"$SDA1_UUID\"} $UUID_GRUB_CODE"
 fi
 
 #--- Exit Codes ----------------------------------------------------------------
