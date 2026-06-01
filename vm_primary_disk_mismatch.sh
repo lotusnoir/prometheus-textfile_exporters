@@ -28,7 +28,7 @@ find_primary_disk() {
 }
 
 get_sda1_uuid() {
-    blkid $(find_primary_disk) 2>/dev/null | grep -oP ' UUID="\K[^"]+' || true
+    /usr/sbin/blkid $(find_primary_disk) 2>/dev/null | grep -oP ' UUID="\K[^"]+' || true
 }
 
 find_grub_cfg() {
