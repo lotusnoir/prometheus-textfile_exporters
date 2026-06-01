@@ -10,7 +10,7 @@
 #
 #  REQUIREMENTS: needs-restarting (optional, RHEL/CentOS) or /var/run/reboot-required (Debian/Ubuntu)
 #       AUTHOR:  Philippe LEAL (lotus.noir@gmail.com)
-#      VERSION:  1.4
+#      VERSION:  1.5
 #      CREATED:  2025-10-02
 #===============================================================================
 
