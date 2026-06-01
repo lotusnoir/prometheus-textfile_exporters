@@ -30,49 +30,84 @@ KERNEL_MISMATCH="false"
 REASON="none"
 SCRAPE_ERROR=0
 
-# Detect current running kernel
-RUNNING_KERNEL=$(uname -r || { SCRAPE_ERROR=1; echo "unknown"; })
+# Get the kernel package version that matches the running kernel
+
 
 # Detect latest installed kernel
 if command -v dpkg >/dev/null 2>&1; then
-    LATEST_KERNEL=$(dpkg --list 2>/dev/null | awk '/linux-image-[0-9]/{print $2}' | sed 's/linux-image-//' | sort -V | tail -n1) || true
-    if [ -z "$LATEST_KERNEL" ]; then LATEST_KERNEL="unknown"; SCRAPE_ERROR=1; fi
+    RUNNING_KERNEL_RELEASE=$(uname -r)
+    RUNNING_KERNEL=$(dpkg-query -W -f='${Version}\n' "linux-image-${RUNNING_KERNEL_RELEASE}" 2>/dev/null || echo "unknown")
+
+    # Get installed kernels (actual packages, not metapackages)
+    LATEST_INSTALLED_KERNEL=$(dpkg --list 2>/dev/null | grep -E '^ii' | awk '/linux-image-[0-9]/{print $3}' | sed 's/linux-image-//' | sort -V | tail -n1) || true
+    [ -z "$LATEST_INSTALLED_KERNEL" ] && LATEST_INSTALLED_KERNEL="unknown" && SCRAPE_ERROR=1
+    # Get candidate kernel version from the metapackage
+    LATEST_AVAILABLE_KERNEL=$(apt-cache policy linux-image-amd64 2>/dev/null | awk '/Candidate:/ {print $2}') || true
+    [ -z "$LATEST_AVAILABLE_KERNEL" ] && LATEST_AVAILABLE_KERNEL="unknown" && SCRAPE_ERROR=1
 elif command -v rpm >/dev/null 2>&1; then
-    LATEST_KERNEL=$(rpm -q kernel 2>/dev/null | sed 's/kernel-//' | sort -V | tail -n1) || true
-    if [ -z "$LATEST_KERNEL" ]; then LATEST_KERNEL="unknown"; SCRAPE_ERROR=1; fi
+    RUNNING_KERNEL=$(uname -r | sed -E 's/\.el[0-9].*//' || { SCRAPE_ERROR=1; echo "unknown"; })
+
+    # Detect installed kernels
+    LATEST_INSTALLED_KERNEL=$(rpm -q --last kernel 2>/dev/null | head -n1 | awk '{print $1}' | sed 's/kernel-\(.*\)\..*$/\1/' | sed -E 's/\.el[0-9].*//') || true
+    # Detect available kernels (requires yum/dnf repo access)
+    if command -v dnf >/dev/null 2>&1; then
+        LATEST_AVAILABLE_KERNEL=$(timeout 60 dnf --nogpgcheck --quiet list available kernel 2>/dev/null | awk '/^kernel\./ {print $2}' | sed -E 's/\.el[0-9].*//' | sort -V | tail -n1) || true
+    elif command -v yum >/dev/null 2>&1; then
+        LATEST_AVAILABLE_KERNEL=$(timeout 60 yum list available kernel 2>/dev/null | \
+            awk '/^kernel\./ {print $2}' | sort -V | tail -n1) || true
+    else
+        LATEST_AVAILABLE_KERNEL=$LATEST_INSTALLED_KERNEL
+    fi
+
+    [ -z "$LATEST_AVAILABLE_KERNEL" ] && LATEST_AVAILABLE_KERNEL="unknown" && SCRAPE_ERROR=1
+    [ -z "$LATEST_INSTALLED_KERNEL" ] && LATEST_INSTALLED_KERNEL="unknown" && SCRAPE_ERROR=1
 else
-    LATEST_KERNEL="unknown"
+    LATEST_INSTALLED_KERNEL="unknown"
+    LATEST_AVAILABLE_KERNEL="unknown"
     SCRAPE_ERROR=1
 fi
 
 # Debian/Ubuntu reboot-required file
 if [ -f /var/run/reboot-required ]; then
     REBOOT=1
-    REASON="debian_reboot_file"
+    REASON="needs_restarting"
 fi
 
 # RHEL/CentOS reboot check
 if [ -x /bin/needs-restarting ]; then
-    if needs-restarting -r 2>/dev/null | grep -q 'Reboot is required'; then
+    if grep -q 'Reboot is required' <(needs-restarting -r 2>&1); then
         REBOOT=1
         REASON="needs_restarting"
-    elif [ $? -ne 0 ]; then
+    fi
+    # Check if needs-restarting command failed
+    if [ $? -ne 0 ]; then
         SCRAPE_ERROR=1
     fi
 fi
 
 # Kernel mismatch
-if [ "$LATEST_KERNEL" != "unknown" ] && [ "$RUNNING_KERNEL" != "$LATEST_KERNEL" ]; then
-    REBOOT=1
+if [ "$LATEST_AVAILABLE_KERNEL" != "unknown" ] && [ "$RUNNING_KERNEL" != "$LATEST_AVAILABLE_KERNEL" ]; then
     KERNEL_MISMATCH="true"
-    REASON="kernel_mismatch"
+    [ "$REASON" = "needs_restarting" ] && REASON="kernel_mismatch"
+fi
+if [ "$LATEST_INSTALLED_KERNEL" != "unknown" ] && [ "$RUNNING_KERNEL" != "$LATEST_INSTALLED_KERNEL" ]; then
+    KERNEL_MISMATCH="true"
+    [ "$REASON" = "needs_restarting" ] && REASON="kernel_mismatch"
+fi
+
+if [ "$KERNEL_MISMATCH" = "true" ]; then
+    MISMATCH_VALUE=1
+else
+    MISMATCH_VALUE=0
 fi
 
 # Prometheus metrics
 echo "# HELP vm_pending_reboot Check if a pending reboot is required"
 echo "# TYPE vm_pending_reboot gauge"
-echo "vm_pending_reboot{kernel_mismatch=\"$KERNEL_MISMATCH\",running_kernel=\"$RUNNING_KERNEL\",latest_kernel=\"$LATEST_KERNEL\",reason=\"$REASON\"} $REBOOT"
-
+echo "vm_pending_reboot{reason=\"$REASON\"} $REBOOT"
+echo "# HELP vm_pending_kernel Check if a new kernel is available"
+echo "# TYPE vm_pending_kernel gauge"
+echo "vm_pending_kernel{running_kernel=\"$RUNNING_KERNEL\",latest_installed_kernel=\"$LATEST_INSTALLED_KERNEL\",latest_available_kernel=\"$LATEST_AVAILABLE_KERNEL\"} $MISMATCH_VALUE"
 echo "# HELP vm_pending_reboot_scrape_error 1 if an error occurred during detection"
 echo "# TYPE vm_pending_reboot_scrape_error gauge"
 echo "vm_pending_reboot_scrape_error $SCRAPE_ERROR"

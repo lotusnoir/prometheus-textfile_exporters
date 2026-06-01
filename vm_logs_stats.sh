@@ -29,7 +29,7 @@ require_root
 LOG_DIR="${LOG_DIR:-/var/log}"
 
 # Default error patterns (override with env var)
-ERROR_PATTERN="${LOG_ERROR_PATTERNS:-error:|warning:|fail|invalid|denied|forbidden|timeout|not found|critical}"
+ERROR_PATTERN="${LOG_ERROR_PATTERNS:-[eE]rror|[wW]arn|[fF]ail|[iI]nvalid|[dD]enied|[fF]orbidden|[tT]imeout|not found|[cC]ritical}"
 
 # Default excluded dirs (override with env var)
 LOG_EXCLUDE_DIRS="${LOG_EXCLUDE_DIRS:-}"
