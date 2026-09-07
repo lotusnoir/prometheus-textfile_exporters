@@ -1,4 +1,16 @@
 #!/bin/bash
+#===============================================================================
+#         FILE:  vm_version_comparison.sh
+#
+#        USAGE:  ./vm_version_comparison.sh
+#
+#  DESCRIPTION:  Scrape actual and latest version of a set of application not installed from repository.
+#
+#  REQUIREMENTS:  
+#       AUTHOR:  Philippe LEAL (lotus.noir@gmail.com)
+#      VERSION:  1.2
+#      CREATED:  2024-11-24
+#===============================================================================
 
 # Add proxy variables
 if [ -f /etc/profile.d/proxy.sh ]; then
@@ -21,30 +33,31 @@ INTERNET_SCRAPE="${INTERNET_SCRAPE:-0}"
 
 # Define applications with their paths and repository URLs
 declare -A apps=(
-    ["node_exporter"]="/usr/local/bin/node_exporter https://api.github.com/repos/prometheus/node_exporter/releases/latest 1.10.2"
-    ["chrony_exporter"]="/usr/local/bin/chrony_exporter https://api.github.com/repos/SuperQ/chrony_exporter/releases/latest 0.13.3"
+    ["node_exporter"]="/usr/local/bin/node_exporter https://api.github.com/repos/prometheus/node_exporter/releases/latest 1.12.1"
+    ["chrony_exporter"]="/usr/local/bin/chrony_exporter https://api.github.com/repos/SuperQ/chrony_exporter/releases/latest 0.14.0"
     ["conntrack_exporter"]="/usr/local/bin/conntrack_exporter https://api.github.com/repos/hiveco/conntrack_exporter/releases/latest 0.3.1"
     ["blackbox_exporter"]="/usr/local/bin/blackbox_exporter https://api.github.com/repos/prometheus/blackbox_exporter/releases/latest 0.28.0"
     ["rsyslog_exporter"]="/usr/local/bin/rsyslog_exporter https://api.github.com/repos/prometheus-community/rsyslog_exporter/releases/latest 1.1.0"
     ["keepalived_exporter"]="/usr/bin/keepalived_exporter https://api.github.com/repos/gen2brain/keepalived_exporter/releases/latest 0.7.1"
-    ["fluentbit"]="/opt/fluent-bit/bin/fluent-bit https://api.github.com/repos/fluent/fluent-bit/releases/latest 4.2.3"
-    ["cadvisor"]="/opt/cadvisor/cadvisor https://api.github.com/repos/google/cadvisor/releases/latest 0.56.2"
-    ["consul"]="/usr/bin/consul https://api.github.com/repos/hashicorp/consul/releases/latest 1.22.5"
+    ["fluentbit"]="/opt/fluent-bit/bin/fluent-bit https://api.github.com/repos/fluent/fluent-bit/releases/latest 5.1.2"
+    ["cadvisor"]="/opt/cadvisor/cadvisor https://api.github.com/repos/google/cadvisor/releases/latest 0.60.5"
+    ["consul"]="/usr/bin/consul https://api.github.com/repos/hashicorp/consul/releases/latest 2.0.3"
     ["consul_exporter"]="/usr/local/bin/consul_exporter https://api.github.com/repos/prometheus/consul_exporter/releases/latest 0.13.0"
     ["snoopy"]="/usr/sbin/snoopyctl https://api.github.com/repos/a2o/snoopy/releases/latest 2.5.2"
     ["squid_exporter"]="/usr/local/bin/squid-exporter https://api.github.com/repos/boynux/squid-exporter/releases/latest 1.13.0"
     ["systemd_exporter"]="/usr/local/bin/systemd_exporter https://api.github.com/repos/prometheus-community/systemd_exporter/releases/latest 0.7.0"
     ["process_exporter"]="/usr/local/bin/process_exporter https://api.github.com/repos/ncabatoff/process-exporter/releases/latest 0.8.7"
-    ["redis_exporter"]="/usr/local/bin/redis_exporter https://api.github.com/repos/oliver006/redis_exporter/releases/latest 1.82.1"
-    ["alloy"]="/usr/local/bin/alloy https://api.github.com/repos/grafana/alloy/releases/latest 1.14.1"
-    ["controlm"]="/opt/controlM_agent https://docs.bmc.com/xwiki/bin/view/Control-M-Orchestration/Control-M/workloadautomation 9.0.22.050 [0-9]+\.[0-9]+\.[0-9]+\.[0-9]{3}"
-    ["postgresql_exporter"]="/usr/local/bin/postgres_exporter https://api.github.com/repos/prometheus-community/postgres_exporter/releases/latest 0.19.1"
-    ["mysqld_exporter"]="/usr/local/bin/mysqld_exporter https://api.github.com/repos/prometheus/mysqld_exporter/releases/latest 0.19.0"
+    ["redis_exporter"]="/usr/local/bin/redis_exporter https://api.github.com/repos/oliver006/redis_exporter/releases/latest 1.91.0"
+    ["alloy"]="/usr/local/bin/alloy https://api.github.com/repos/grafana/alloy/releases/latest 1.19.2"
+    ["controlm"]="/opt/controlM_agent https://docs.bmc.com/xwiki/bin/view/Control-M-Orchestration/Control-M/workloadautomation 9.0.22.100 [0-9]+\.[0-9]+\.[0-9]+\.[0-9]{3}"
+    ["postgresql_exporter"]="/usr/local/bin/postgres_exporter https://api.github.com/repos/prometheus-community/postgres_exporter/releases/latest 0.20.1"
+    ["mysqld_exporter"]="/usr/local/bin/mysqld_exporter https://api.github.com/repos/prometheus/mysqld_exporter/releases/latest 0.20.0"
     ["logstash_exporter"]="/usr/local/bin/logstash-exporter https://api.github.com/repos/lotusnoir/prometheus-logstash-exporter/releases/latest 0.7.15"
-    ["traefikee"]="docker https://doc.traefik.io/traefik-enterprise/kb/release-notes/ 2.12.6"
-    ["victoriametrics"]="docker https://api.github.com/repos/VictoriaMetrics/VictoriaMetrics/releases/latest 1.138.0"
-    ["freeradius"]="docker https://api.github.com/repos/FreeRADIUS/freeradius-server/releases/latest 3.2.8"
+    ["traefikee"]="docker https://doc.traefik.io/traefik-enterprise/kb/release-notes/ 2.12.10"
+    ["victoriametrics"]="docker https://api.github.com/repos/VictoriaMetrics/VictoriaMetrics/releases/latest 1.151.0"
+    ["freeradius"]="docker https://api.github.com/repos/FreeRADIUS/freeradius-server/releases/latest 3.2.10"
     ["freeradius_exporter"]="docker https://api.github.com/repos/bvantagelimited/freeradius_exporter/releases/latest 0.1.9"
+    ["crowdstrike"]="/opt/CrowdStrike/falconctl notpossible 7.39.19204.0"
 
     #["haproxy"]="
     #["kafka_exporter"]="
@@ -90,6 +103,9 @@ get_installed_version() {
             ;;
         "controlm")
            grep CODE_VERSION ${binary_path}/ctm/data/CONFIG.dat | awk '{print $NF}'
+            ;;
+        "crowdstrike")
+           ${binary_path} -g --version | awk '{print $NF}' | tr -d '[:space:]'
             ;;
         *)
             "$binary_path" --version | head -1 | awk '{print $3}'

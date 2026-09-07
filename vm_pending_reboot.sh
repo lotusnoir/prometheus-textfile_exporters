@@ -111,13 +111,13 @@ echo "# HELP vm_pending_reboot Check if a pending reboot is required"
 echo "# TYPE vm_pending_reboot gauge"
 echo "vm_pending_reboot{reason=\"$REASON\"} $REBOOT"
 
-echo "# HELP vm_pending_kernel Check if a new kernel is available"
-echo "# TYPE vm_pending_kernel gauge"
-echo "vm_pending_kernel{running_kernel=\"$RUNNING_KERNEL\",latest_installed_kernel=\"$LATEST_INSTALLED_KERNEL\",latest_available_kernel=\"$LATEST_AVAILABLE_KERNEL\"} $MISMATCH_VALUE"
-
 echo "# HELP vm_pending_reboot_scrape_error 1 if an error occurred during detection"
 echo "# TYPE vm_pending_reboot_scrape_error gauge"
 echo "vm_pending_reboot_scrape_error $SCRAPE_ERROR"
+
+echo "# HELP vm_pending_kernel Check if a new kernel is available"
+echo "# TYPE vm_pending_kernel gauge"
+echo "vm_pending_kernel{running_kernel=\"$RUNNING_KERNEL\",latest_installed_kernel=\"$LATEST_INSTALLED_KERNEL\",latest_available_kernel=\"$LATEST_AVAILABLE_KERNEL\"} $MISMATCH_VALUE"
 
 echo "# HELP node_kernel_expected Check available version"
 echo "# TYPE node_kernel_expected gauge"
