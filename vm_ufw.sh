@@ -8,7 +8,7 @@
 #
 #  REQUIREMENTS: bash 4+, curl, jq
 #       AUTHOR:  Philippe LEAL (lotus.noir@gmail.com)
-#      VERSION: 1.8
+#      VERSION: 1.9
 #      CREATED: 2025-10-02
 #===============================================================================
 set -euo pipefail
@@ -23,18 +23,29 @@ UFW_RULES_COUNT=0
 
 if [ -n "$UFW_BIN" ]; then
     UFW_EXIST=1
-    UFW_VERSION=$("$UFW_BIN" version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+(\.[0-9]+)?' || echo "unknown")
+
+    UFW_VERSION_OUTPUT=$("$UFW_BIN" version 2>/dev/null || true)
+    if [[ "$UFW_VERSION_OUTPUT" =~ ([0-9]+\.[0-9]+(\.[0-9]+)?) ]]; then
+        UFW_VERSION="${BASH_REMATCH[1]}"
+    fi
+
     STATUS=$("$UFW_BIN" status verbose 2>/dev/null || true)
     [[ "$STATUS" =~ "Status: active" ]] && UFW_STATE=1
 
-    # Supprimer les lignes d'en-tête
-    RULE_LINES=$(echo "$STATUS" | sed '1,2d' | sed '/^$/d')
+    line_num=0
 
     while IFS= read -r line; do
+        line_num=$((line_num + 1))
+        # Ignorer les 2 lignes d'en-tête
+        if (( line_num <= 2 )); then
+            continue
+        fi
+
         # Supprimer les commentaires
         line="${line%%#*}"
-        line="${line%%(*}" 
-        line="$(echo "$line" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+        line="${line%%(*}"
+        line="${line#"${line%%[![:space:]]*}"}"
+        line="${line%"${line##*[![:space:]]}"}"
         [[ -z "$line" ]] && continue
 
         # Remplacer "Anywhere on lo" par "Loopback"
@@ -46,11 +57,7 @@ if [ -n "$UFW_BIN" ]; then
         fi
 
         # Split sur espaces multiples
-        cols=()
-        while read -r word; do
-            [[ -n "$word" ]] && cols+=("$word")
-        done < <(echo "$line" | tr -s ' ' '\n')
-
+        read -r -a cols <<< "$line"
         [[ ${#cols[@]} -lt 2 ]] && continue
 
         to_port="${cols[0]}"
@@ -93,7 +100,7 @@ if [ -n "$UFW_BIN" ]; then
         UFW_RULES_COUNT=$((UFW_RULES_COUNT + 1))
         echo "ufw_rule{action=\"$action\",direction=\"$direction\",from_ip=\"$from_ip\",from_port=\"$from_port\",to_port=\"$to_port\",protocol=\"$protocol\",iface=\"all\"} 1"
 
-    done <<< "$RULE_LINES"
+    done <<< "$STATUS"
 
 else
     UFW_SCRAPE_ERROR=1

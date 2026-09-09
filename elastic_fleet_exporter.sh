@@ -1,7 +1,17 @@
 #!/usr/bin/env bash
-# Export Elastic Fleet agent statuses as Prometheus metrics (stdout version)
-# Supports overriding via environment variables:
-#   KIBANA_URL="https://your-kibana" AUTH="user:password" ./export_fleet_metrics.sh
+##===============================================================================
+#         FILE:  elastic_fleet_exporter.sh 
+#
+#        USAGE:  KIBANA_URL="https://your-kibana" AUTH="user:password" ./elastic_fleet_exporter.sh
+#
+#  DESCRIPTION:  Export Elastic Fleet agent statuses as Prometheus metrics.
+#  		 Check enrollment status of each agent
+#
+#  REQUIREMENTS: bash 4+
+#        AUTHOR: Philippe LEAL
+#       VERSION: 0.1
+#       CREATED: 2025-10-22
+#===============================================================================
 
 set -euo pipefail
 

@@ -8,7 +8,7 @@
 #
 #  REQUIREMENTS:  
 #       AUTHOR:  Philippe LEAL (lotus.noir@gmail.com)
-#      VERSION:  1.2
+#      VERSION:  1.3
 #      CREATED:  2024-11-24
 #===============================================================================
 
@@ -18,8 +18,7 @@ if [ -f /etc/profile.d/proxy.sh ]; then
 fi
 
 #Check user is root
-if [ -z "$USER" ] ; then USER=$(whoami); fi
-if [ "$USER" != "root" ] ; then
+if [ "$(id -u)" -ne 0 ]; then
     echo "$(basename "$0") must be run as root!"
     exit 2
 fi
@@ -30,6 +29,15 @@ PROBLEM_COUNT=0
 PRINT=0
 # Check on internet or take tab value (default)
 INTERNET_SCRAPE="${INTERNET_SCRAPE:-0}"
+
+DOCKER_AVAILABLE=0
+DOCKER_CONTAINERS=""
+
+if command -v docker >/dev/null 2>&1; then
+    DOCKER_AVAILABLE=1
+    DOCKER_CONTAINERS=$(docker ps -a --format '{{.Image}} {{.Names}}')
+fi
+
 
 # Define applications with their paths and repository URLs
 declare -A apps=(
@@ -79,10 +87,10 @@ get_installed_version() {
             "$binary_path" --version 2>&1 | grep -oP 'version \K[0-9.]+' | head -1
             ;;
         "fluentbit" | "cadvisor" | "alloy")
-            "$binary_path" --version | head -1 | awk '{print $3}' | sed 's/v//'
+            "$binary_path" --version | awk 'NR==1 {gsub(/^v/, "", $3); print $3}'
             ;;
         "consul")
-            "$binary_path" --version | head -1 | awk '{print $2}' | sed 's/v//'
+            "$binary_path" --version | awk 'NR==1 {gsub(/^v/, "", $2); print $2}'
             ;;
         "keepalived_exporter")
             "$binary_path" -version 2>&1 | awk '{print $2}'
@@ -91,15 +99,20 @@ get_installed_version() {
             "$binary_path" version | head -1 | awk '{print $NF}'
             ;;
         "traefikee")
+            [ -x /usr/bin/docker ] || return 1
             docker exec traefik_proxy sh -c "traefikee version" | head -1 | awk '{print $2}' | sed 's/v//'
             ;;
         "freeradius")
-	    container_name=$(docker ps -a --format '{{.Image}} {{.Names}}' | grep freeradius-server | awk '{print $2}')
-	    docker exec "$container_name" sh -c "freeradius -v" | head -1 | awk '{print $4}'| tr -d '[:space:]'
+            [ -x /usr/bin/docker ] || return 1
+            container_name=$(printf '%s\n' "$DOCKER_CONTAINERS" | awk '/freeradius-server/ {print $2; exit}')
+            [ -n "$container_name" ] || return 1
+            docker exec "$container_name" sh -c "freeradius -v" | head -1 | awk '{print $4}'| tr -d '[:space:]'
             ;;
         "victoriametrics")
-	    binary=$(docker ps -a --format '{{.Names}}' | grep -E "vm(storage|select|insert)" | head -1)
-	    docker exec "$binary" sh -c "./${binary}-prod -version" | grep -o -E '[0-9]{1,4}\.[0-9]{1,4}\.[0-9]{1,4}' | tr -d '[:space:]'
+            [ -x /usr/bin/docker ] || return 1
+            binary=$(printf '%s\n' "$DOCKER_CONTAINERS" | awk '$2 ~ /^vm(storage|select|insert)/ {print $2; exit}')
+            [ -n "$binary" ] || return 1
+            docker exec "$binary" sh -c "./${binary}-prod -version" | grep -o -E '[0-9]{1,4}\.[0-9]{1,4}\.[0-9]{1,4}' | tr -d '[:space:]'
             ;;
         "controlm")
            grep CODE_VERSION ${binary_path}/ctm/data/CONFIG.dat | awk '{print $NF}'
@@ -120,16 +133,16 @@ get_latest_version() {
 
     case "$app" in
         "traefikee")
-            curl -s "$repo_url" | grep '<h2 id="v.*">v' | grep -oP '>v\K[^ ]+' | head -1
+            curl -fsSL --connect-timeout 5 --max-time 10 "$repo_url" | grep '<h2 id="v.*">v' | grep -oP '>v\K[^ ]+' | head -1
             ;;
         "snoopy")
-            curl -s "$repo_url" | grep '"tag_name"' | tr -d '"' | awk '{print $NF}' | sed -e 's/[-,]//gi' -e 's/snoopy//'
+            curl -fsSL --connect-timeout 5 --max-time 10 "$repo_url" | grep '"tag_name"' | tr -d '"' | awk '{print $NF}' | sed -e 's/[-,]//gi' -e 's/snoopy//'
             ;;
         "controlm")
-            curl -s "$repo_url" | grep -Eo '[0-9]+\.[0-9]+\.[0-9]+\.[0-9]{3}' | sort -ru | head -1
+            curl -fsSL --connect-timeout 5 --max-time 10 "$repo_url" | grep -Eo '[0-9]+\.[0-9]+\.[0-9]+\.[0-9]{3}' | sort -ru | head -1
             ;;
         *)
-            curl -s "$repo_url" | grep '"tag_name"' | tr -d '"' | awk '{print $NF}' | sed -r 's/[v,]//gi'
+            curl -fsSL --connect-timeout 5 --max-time 10 "$repo_url" | grep '"tag_name"' | tr -d '"' | awk '{print $NF}' | sed -r 's/[v,]//gi'
             ;;
     esac
 }
@@ -142,42 +155,49 @@ process_app() {
     local version_latest="$4"
     local default_pattern='[0-9]{1,4}\.[0-9]{1,4}\.[0-9]{1,4}'
     local version_pattern="${5:-$default_pattern}"
-    local prefix=$(echo "$app" | tr '[:lower:]' '[:upper:]' | tr '-' '_')
+    #local prefix=$(echo "$app" | tr '[:lower:]' '[:upper:]' | tr '-' '_')
+    local prefix="${app^^}"
+    prefix="${prefix//-/_}"
 
-    # Special case for traefikee (docker container)
     if [ "$app" == "traefikee" ]; then
-        if [ ! -f "/usr/bin/docker" ] || [ "$(docker ps -a | grep -c traefik_proxy)" -ne "1" ]; then
-            return
+        if [ "$binary_path" == "docker" ]; then
+            [ "$DOCKER_AVAILABLE" -eq 1 ] || return
+            grep -q ' traefik_proxy$' <<< "$DOCKER_CONTAINERS" || return
         fi
     elif [ "$app" == "victoriametrics" ]; then
-	if [ "$binary_path" == "docker" ]; then
-            binary=$(docker ps -a --format '{{.Names}}' | grep -E "vm(storage|select|insert)" | head -1)
-	    [ -z "$binary" ] && return
-            if [ "$(docker ps -a | grep -c ${binary})" -ne "1" ]; then
-                return
-            fi
-	fi
-    elif [ "$app" == "freeradius" ]; then
-	if [ "$binary_path" == "docker" ]; then
-	    container_name=$(docker ps -a --format '{{.Image}} {{.Names}}' | grep freeradius-server | awk '{print $2}')
-	    [ -z "$container_name" ] && return 
-	    if [ "$(docker ps -a | grep -c "${container_name}")" -ne "1" ]; then
-	          return
-	    fi
+        if [ "$binary_path" == "docker" ]; then
+            [ "$DOCKER_AVAILABLE" -eq 1 ] || return
+            binary=$(printf '%s\n' "$DOCKER_CONTAINERS" |
+                awk '$2 ~ /^vm(storage|select|insert)/ {print $2; exit}')
+            
+            [ -n "$binary" ] || return
         fi
-    elif [ ! -e "$binary_path" ]; then
+    elif [ "$app" == "freeradius" ]; then
+        if [ "$binary_path" == "docker" ]; then
+            [ "$DOCKER_AVAILABLE" -eq 1 ] || return
+            container_name=$(printf '%s\n' "$DOCKER_CONTAINERS" |
+                awk '/freeradius-server/ {print $2; exit}')
+            
+            [ -n "$container_name" ] || return    
+        fi
+    elif [ ! -x "$binary_path" ]; then
         return
     fi
 
     PRINT=1
 
     # Get versions
-    local version=$(get_installed_version "$app" "$binary_path")
-    [ "$?" -ne "0" ] && PROBLEM_COUNT=$((PROBLEM_COUNT + 1))
+    local version 
+    version=$(get_installed_version "$app" "$binary_path")
+    if [ "$?" -ne 0 ] || [ -z "$version" ]; then
+        PROBLEM_COUNT=$((PROBLEM_COUNT + 1))
+    fi
 
     if [ "$INTERNET_SCRAPE" != 0 ]; then
-        local version_latest=$(get_latest_version "$app" "$repo_url")
-        [ "$?" -ne "0" ] && PROBLEM_COUNT=$((PROBLEM_COUNT + 1))
+        version_latest=$(get_latest_version "$app" "$repo_url")
+        if [ "$?" -ne 0 ] || [ -z "$version_latest" ]; then
+            PROBLEM_COUNT=$((PROBLEM_COUNT + 1))
+        fi
     fi
 
     local version_major=${version%.*}
@@ -194,7 +214,7 @@ process_app() {
     #echo "         version_latest_major=$version_latest_major"
 
     # Version validation and comparison
-    if [ "$(echo "$version" | grep -c -E "$version_pattern")" -eq "1" ] && [ "$(echo "$version_latest" | grep -c -E "$version_pattern")" -eq "1" ]; then
+    if [[ "$version" =~ $version_pattern ]] && [[ "$version_latest" =~ $version_pattern ]]; then
         declare -g "${prefix}_VERSION_SCRAPE"=1
         [ "$version" == "$version_latest" ] && declare -g "${prefix}_VERSION_MATCH"=1 || declare -g "${prefix}_VERSION_MATCH"=0
         [ "$version_major" == "$version_latest_major" ] && declare -g "${prefix}_VERSION_MAJOR_MATCH"=1 || declare -g "${prefix}_VERSION_MAJOR_MATCH"=0

@@ -13,7 +13,7 @@
 #
 #  REQUIREMENTS: awk, bash 4+, consul config file, sort
 #       AUTHOR:  Philippe
-#      VERSION: 2.0
+#      VERSION: 2.1
 #      CREATED: 2025-10-02
 #===============================================================================
 
@@ -22,84 +22,174 @@ set -euo pipefail
 CONFIG_FILE="${CONFIG_FILE:-/opt/consul.d/consul.hcl}"
 
 SCRAPE_ERROR=0
+METRIC_NAME="vm_consul_node_meta"
 
-# Function to sanitize a string for Prometheus label
+#===============================================================================
+# Functions
+#===============================================================================
 sanitize() {
     local s="$1"
-    echo "$s" | sed -E 's#[^a-zA-Z0-9]+#_#g'
+    local result=""
+    local i
+    local c
+    local previous_invalid=0
+
+    for ((i = 0; i < ${#s}; i++)); do
+        c="${s:i:1}"
+
+        if [[ "$c" =~ [a-zA-Z0-9] ]]; then
+            result+="$c"
+            previous_invalid=0
+        elif (( previous_invalid == 0 )); then
+            result+="_"
+            previous_invalid=1
+        fi
+    done
+
+    printf '%s' "$result"
 }
 
-# Prometheus headers
-{
-    echo "# HELP vm_consul_node_meta Consul node_meta exposed as vm_consul_node_meta"
-    echo "# TYPE vm_consul_node_meta gauge"
-} 
+trim() {
+    local s="$1"
 
-# If file missing, mark scrape error and exit clean
-if [ ! -f "$CONFIG_FILE" ]; then
-    echo 'vm_consul_node_meta_scrape_error 1'
+    s="${s#"${s%%[![:space:]]*}"}"
+    s="${s%"${s##*[![:space:]]}"}"
+
+    printf '%s' "$s"
+}
+
+#===============================================================================
+# Prometheus headers
+#===============================================================================
+
+echo "# HELP $METRIC_NAME Consul node_meta exposed as $METRIC_NAME"
+echo "# TYPE $METRIC_NAME gauge"
+
+#===============================================================================
+# Check configuration file
+#===============================================================================
+
+if [[ ! -f "$CONFIG_FILE" ]]; then
+    echo "${METRIC_NAME}_scrape_error 1"
     exit 0
 fi
 
+#===============================================================================
 # Extract node_meta block
-mapfile -t NODE_META < <(awk '/node_meta \{/,/^\}/' "$CONFIG_FILE")
+#===============================================================================
 
-declare -A found=( ["scope"]=0 ["vlan"]=0 ["severity"]=0 ["os"]=0 ["env"]=0 ["site"]=0 ["groups"]=0 ["apps"]=0 )
+mapfile -t NODE_META < <(
+    awk '/node_meta \{/,/^\}/' "$CONFIG_FILE"
+)
+
+declare -A found=(
+    ["scope"]=0
+    ["vlan"]=0
+    ["severity"]=0
+    ["os"]=0
+    ["env"]=0
+    ["site"]=0
+    ["groups"]=0
+    ["apps"]=0
+)
 
 metrics=()
 
+#===============================================================================
+# Parse node_meta
+#===============================================================================
+
 for line in "${NODE_META[@]}"; do
-    [[ "$line" =~ ^[[:space:]]*$ || "$line" =~ ^[[:space:]]*\}[[:space:]]*$ ]] && continue
+
+    [[ "$line" =~ ^[[:space:]]*$ ]] && continue
+    [[ "$line" =~ ^[[:space:]]*\}[[:space:]]*$ ]] && continue
 
     if [[ "$line" =~ ([[:alnum:]_]+)[[:space:]]*=[[:space:]]*\"([^\"]+)\" ]]; then
+
         key="${BASH_REMATCH[1]}"
         value="${BASH_REMATCH[2]}"
+
         found[$key]=1
 
-        sanitized_value=$(sanitize "$value")
-        sanitized_tag=$(sanitize "${key}_${value}")
-
         case "$key" in
+
             vlan|scope|severity|os|env|site)
-                metrics+=("vm_consul_node_meta{key=\"$key\",value=\"$sanitized_value\",ansible_tag=\"$sanitized_tag\"} 1")
+                sanitized_value=$(sanitize "$value")
+                sanitized_tag="${key}_${sanitized_value}"
+
+                metrics+=(
+                    "vm_consul_node_meta{key=\"$key\",value=\"$sanitized_value\",ansible_tag=\"$sanitized_tag\"} 1"
+                )
                 ;;
+
             groups)
                 if [[ -n "$value" ]]; then
                     IFS=',' read -ra groups_arr <<< "$value"
+
                     for g in "${groups_arr[@]}"; do
-                        g_trimmed=$(echo "$g" | xargs)
-                        [[ -n "$g_trimmed" ]] && metrics+=("vm_consul_node_meta{key=\"groups\",value=\"$(sanitize "$g_trimmed")\",ansible_tag=\"$(sanitize groups_$g_trimmed)\"} 1")
+                        g_trimmed=$(trim "$g")
+
+                        [[ -n "$g_trimmed" ]] || continue
+
+                        sanitized_value=$(sanitize "$g_trimmed")
+                        sanitized_tag="groups_${sanitized_value}"
+
+                        metrics+=(
+                            "vm_consul_node_meta{key=\"groups\",value=\"$sanitized_value\",ansible_tag=\"$sanitized_tag\"} 1"
+                        )
                     done
                 fi
                 ;;
+
             apps)
                 if [[ -n "$value" ]]; then
                     IFS=',' read -ra apps_arr <<< "$value"
+
                     for a in "${apps_arr[@]}"; do
-                        a_trimmed=$(echo "$a" | xargs)
-                        [[ -n "$a_trimmed" ]] && metrics+=("vm_consul_node_meta{key=\"apps\",value=\"$(sanitize "$a_trimmed")\",ansible_tag=\"$(sanitize apps_$a_trimmed)\"} 1")
+                        a_trimmed=$(trim "$a")
+
+                        [[ -n "$a_trimmed" ]] || continue
+
+                        sanitized_value=$(sanitize "$a_trimmed")
+                        sanitized_tag="apps_${sanitized_value}"
+
+                        metrics+=(
+                            "vm_consul_node_meta{key=\"apps\",value=\"$sanitized_value\",ansible_tag=\"$sanitized_tag\"} 1"
+                        )
                     done
                 fi
                 ;;
+
             *)
                 ;;
         esac
     fi
 done
 
+#===============================================================================
 # Add empty metrics for mandatory types
+#===============================================================================
+
 for k in scope vlan severity os env site; do
-    if [ "${found[$k]}" -eq 0 ]; then
-        metrics+=("vm_consul_node_meta{key=\"$k\",value=\"empty\",ansible_tag=\"empty\"} 0")
+    if [[ "${found[$k]}" -eq 0 ]]; then
+        metrics+=(
+            "vm_consul_node_meta{key=\"$k\",value=\"empty\",ansible_tag=\"empty\"} 0"
+        )
     fi
 done
 
-# Sort metrics alphabetically by key and ansible_tag and print
-printf "%s\n" "${metrics[@]}" | sort
+#===============================================================================
+# Sort and output metrics
+#===============================================================================
 
-# Always emit scrape error metric at the end
-echo "# HELP vm_consul_node_meta_scrape_error 1 if an error occurred during parsing"
-echo "# TYPE vm_consul_node_meta_scrape_error gauge"
-echo "vm_consul_node_meta_scrape_error $SCRAPE_ERROR"
+printf '%s\n' "${metrics[@]}" | sort
+
+#===============================================================================
+# Scrape error metric
+#===============================================================================
+
+echo "# HELP ${METRIC_NAME}_scrape_error 1 if an error occurred during parsing"
+echo "# TYPE ${METRIC_NAME}_scrape_error gauge"
+echo "${METRIC_NAME}_scrape_error $SCRAPE_ERROR"
 
 exit 0
