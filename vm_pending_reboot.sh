@@ -116,7 +116,7 @@ detect_debian_kernel() {
     ) || true
 
     if [[ -n "$available" && "$available" != "(none)" ]]; then
-        LATEST_AVAILABLE_KERNEL="$available"
+        LATEST_AVAILABLE_KERNEL="${available%%-*}"
     else
         LATEST_AVAILABLE_KERNEL="unknown"
         SCRAPE_ERROR=1
