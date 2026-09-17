@@ -69,9 +69,9 @@ detect_debian_kernel() {
     if dpkg-query -W -f='${Status}\n${Version}\n' "$running_package" 2>/dev/null |
         grep -q '^install ok installed$'
     then
-        RUNNING_KERNEL="$running_release"
+	RUNNING_KERNEL="${running_release%%+*}"
     else
-        RUNNING_KERNEL="$running_release"
+	RUNNING_KERNEL="${running_release%%+*}"
         SCRAPE_ERROR=1
     fi
 
