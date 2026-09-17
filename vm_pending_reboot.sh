@@ -20,7 +20,7 @@
 #                 rpm, dnf/yum, needs-restarting (optional)
 #
 #       AUTHOR:  Philippe LEAL (lotus.noir@gmail.com)
-#      VERSION: 2.0
+#      VERSION: 2.1
 #      CREATED: 2025-10-02
 #===============================================================================
 
@@ -250,6 +250,18 @@ detect_rpm_kernel() {
         LATEST_AVAILABLE_KERNEL="$LATEST_INSTALLED_KERNEL"
 
     fi
+
+    #---------------------------------------------------------------------------
+    # RHEL/Rocky/Oracle kernel releases carry an extra trailing micro number
+    # (e.g. "211.55.1"). Strip it so all kernel values look like
+    # "6.12.0-211.55" instead of "6.12.0-211.55.1".
+    # Applied uniformly to all three values so the mismatch comparison
+    # below stays consistent.
+    #---------------------------------------------------------------------------
+
+    RUNNING_KERNEL="${RUNNING_KERNEL%.*}"
+    LATEST_INSTALLED_KERNEL="${LATEST_INSTALLED_KERNEL%.*}"
+    LATEST_AVAILABLE_KERNEL="${LATEST_AVAILABLE_KERNEL%.*}"
 }
 
 #-------------------------------------------------------------------------------
