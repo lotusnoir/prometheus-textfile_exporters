@@ -20,7 +20,7 @@
 #                 rpm, dnf/yum, needs-restarting (optional)
 #
 #       AUTHOR:  Philippe LEAL (lotus.noir@gmail.com)
-#      VERSION: 2.1
+#      VERSION: 2.2
 #      CREATED: 2025-10-02
 #===============================================================================
 
@@ -53,6 +53,9 @@ detect_debian_kernel() {
 
     local running_release
     local running_package
+    local running_info
+    local running_status
+    local running_version
     local installed
     local available
 
@@ -62,16 +65,30 @@ detect_debian_kernel() {
     # Kernel package corresponding to the running kernel
     #
     # linux-image-<release>
+    #
+    # uname -r reports the Debian ABI-suffixed release (e.g. "5.10.0-44-amd64"),
+    # which uses a different numbering scheme than the package Version used
+    # for LATEST_INSTALLED_KERNEL / LATEST_AVAILABLE_KERNEL (e.g. "5.10.257").
+    # Look up the dpkg Version of the running kernel package instead, so all
+    # three values are expressed in the same format and are comparable.
     #---------------------------------------------------------------------------
 
     running_package="linux-image-${running_release}"
 
-    if dpkg-query -W -f='${Status}\n${Version}\n' "$running_package" 2>/dev/null |
-        grep -q '^install ok installed$'
-    then
-	RUNNING_KERNEL="${running_release%%+*}"
+    running_info=$(
+        dpkg-query -W -f='${Status}\t${Version}' "$running_package" 2>/dev/null
+    ) || true
+
+    IFS=$'\t' read -r running_status running_version <<< "$running_info"
+
+    if [[ "$running_status" == "install ok installed" && -n "$running_version" ]]; then
+        # Remove Debian revision (e.g. "5.10.257-1" -> "5.10.257")
+        RUNNING_KERNEL="${running_version%%-*}"
     else
-	RUNNING_KERNEL="${running_release%%+*}"
+        # Fall back to uname -r (ABI-suffixed release). Not directly
+        # comparable to the installed/available versions, but avoids
+        # leaving RUNNING_KERNEL empty.
+        RUNNING_KERNEL="${running_release%%+*}"
         SCRAPE_ERROR=1
     fi
 
