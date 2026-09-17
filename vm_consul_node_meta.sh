@@ -10,10 +10,11 @@
 #                Output is sorted alphabetically by key and ansible_tag.
 #                Labels: key, value, ansible_tag
 #                Both value and ansible_tag are sanitized for Prometheus.
+#                Metric convention: 0 = key present/ok, 1 = key missing/error.
 #
 #  REQUIREMENTS: awk, bash 4+, consul config file, sort
 #       AUTHOR:  Philippe
-#      VERSION: 2.1
+#      VERSION: 2.2
 #      CREATED: 2025-10-02
 #===============================================================================
 
@@ -62,7 +63,7 @@ trim() {
 # Prometheus headers
 #===============================================================================
 
-echo "# HELP $METRIC_NAME Consul node_meta exposed as $METRIC_NAME"
+echo "# HELP $METRIC_NAME Consul node_meta exposed as $METRIC_NAME, 0 = key present, 1 = key missing/empty"
 echo "# TYPE $METRIC_NAME gauge"
 
 #===============================================================================
@@ -118,7 +119,7 @@ for line in "${NODE_META[@]}"; do
                 sanitized_tag="${key}_${sanitized_value}"
 
                 metrics+=(
-                    "vm_consul_node_meta{key=\"$key\",value=\"$sanitized_value\",ansible_tag=\"$sanitized_tag\"} 1"
+                    "vm_consul_node_meta{key=\"$key\",value=\"$sanitized_value\",ansible_tag=\"$sanitized_tag\"} 0"
                 )
                 ;;
 
@@ -135,7 +136,7 @@ for line in "${NODE_META[@]}"; do
                         sanitized_tag="groups_${sanitized_value}"
 
                         metrics+=(
-                            "vm_consul_node_meta{key=\"groups\",value=\"$sanitized_value\",ansible_tag=\"$sanitized_tag\"} 1"
+                            "vm_consul_node_meta{key=\"groups\",value=\"$sanitized_value\",ansible_tag=\"$sanitized_tag\"} 0"
                         )
                     done
                 fi
@@ -154,7 +155,7 @@ for line in "${NODE_META[@]}"; do
                         sanitized_tag="apps_${sanitized_value}"
 
                         metrics+=(
-                            "vm_consul_node_meta{key=\"apps\",value=\"$sanitized_value\",ansible_tag=\"$sanitized_tag\"} 1"
+                            "vm_consul_node_meta{key=\"apps\",value=\"$sanitized_value\",ansible_tag=\"$sanitized_tag\"} 0"
                         )
                     done
                 fi
@@ -173,7 +174,7 @@ done
 for k in scope vlan severity os env site; do
     if [[ "${found[$k]}" -eq 0 ]]; then
         metrics+=(
-            "vm_consul_node_meta{key=\"$k\",value=\"empty\",ansible_tag=\"empty\"} 0"
+            "vm_consul_node_meta{key=\"$k\",value=\"empty\",ansible_tag=\"empty\"} 1"
         )
     fi
 done

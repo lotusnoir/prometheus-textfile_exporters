@@ -214,12 +214,13 @@ process_app() {
     #echo "         version_latest_major=$version_latest_major"
 
     # Version validation and comparison
+    # NOTE: inverted convention -> 0 = OK/match, 1 = error/mismatch
     if [[ "$version" =~ $version_pattern ]] && [[ "$version_latest" =~ $version_pattern ]]; then
-        declare -g "${prefix}_VERSION_SCRAPE"=1
-        [ "$version" == "$version_latest" ] && declare -g "${prefix}_VERSION_MATCH"=1 || declare -g "${prefix}_VERSION_MATCH"=0
-        [ "$version_major" == "$version_latest_major" ] && declare -g "${prefix}_VERSION_MAJOR_MATCH"=1 || declare -g "${prefix}_VERSION_MAJOR_MATCH"=0
-    else
         declare -g "${prefix}_VERSION_SCRAPE"=0
+        [ "$version" == "$version_latest" ] && declare -g "${prefix}_VERSION_MATCH"=0 || declare -g "${prefix}_VERSION_MATCH"=1
+        [ "$version_major" == "$version_latest_major" ] && declare -g "${prefix}_VERSION_MAJOR_MATCH"=0 || declare -g "${prefix}_VERSION_MAJOR_MATCH"=1
+    else
+        declare -g "${prefix}_VERSION_SCRAPE"=1
     fi
 }
 
@@ -238,7 +239,7 @@ done
 ########################################################################
 if [ "$PRINT" -eq "1" ]; then
   #####################################
-  echo "# HELP version_comparison Check binary version and latest version on repo project, 1 equals, 0 not equals"
+  echo "# HELP version_comparison Check binary version and latest version on repo project, 0 equals, 1 not equals"
   echo "# TYPE version_comparison gauge"
 
   for app in "${!apps[@]}"; do
@@ -252,7 +253,7 @@ if [ "$PRINT" -eq "1" ]; then
   done
 
   #####################################
-  echo "# HELP version_comparison_major Check binary version and latest version only keeping the major version on repo project, 1 equals, 0 not equals"
+  echo "# HELP version_comparison_major Check binary version and latest version only keeping the major version on repo project, 0 equals, 1 not equals"
   echo "# TYPE version_comparison_major gauge"
 
   for app in "${!apps[@]}"; do
@@ -266,12 +267,12 @@ if [ "$PRINT" -eq "1" ]; then
   done
 
   #####################################
-  echo "# HELP version_comparison_scrape_success Check if versions were found 1 ok, 0 problem"
+  echo "# HELP version_comparison_scrape_success Check if versions were found 0 ok, 1 problem"
   echo "# TYPE version_comparison_scrape_success gauge"
 
   current_date=$(date +%s) # Unix timestamp format
-  # Initialize all_ok flag
-  all_ok=1
+  # Initialize all_ok flag (0 = all good, 1 = at least one problem)
+  all_ok=0
 
   # Print metrics and check values
   for app in "${!apps[@]}"; do
@@ -280,15 +281,15 @@ if [ "$PRINT" -eq "1" ]; then
     if [ -n "${!scrape_var}" ]; then
         echo "version_comparison_scrape_success{application=\"$app\"} ${!scrape_var}"
 
-        # Check if value is not 1
-        if [ "${!scrape_var}" -ne 1 ]; then
-            all_ok=0
+        # Check if value is not 0 (i.e. an error occurred)
+        if [ "${!scrape_var}" -ne 0 ]; then
+            all_ok=1
         fi
     fi
   done
 
   # Add a summary metric
-  echo "# HELP version_comparison_all_scrapes_ok Check if all components scraped successfully"
+  echo "# HELP version_comparison_all_scrapes_ok Check if all components scraped successfully, 0 ok, 1 error"
   echo "# TYPE version_comparison_all_scrapes_ok gauge"
   echo "version_comparison_all_scrapes_ok{date=\"$current_date\"} $all_ok"
 

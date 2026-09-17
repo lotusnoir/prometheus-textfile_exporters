@@ -132,7 +132,7 @@ fi
 # Pending upgrades
 #-------------------------------------------------------------------------------
 
-echo "# HELP apt_upgrades_pending Apt packages pending updates by origin/arch/package"
+echo "# HELP apt_upgrades_pending Apt packages pending updates by origin/arch/package, series only exported when a pending update exists, value is always 1"
 echo "# TYPE apt_upgrades_pending gauge"
 
 for pkg_name in "${!upgrades_pending[@]}"; do
@@ -145,7 +145,7 @@ done
 # Held upgrades
 #-------------------------------------------------------------------------------
 
-echo "# HELP apt_upgrades_held Apt packages pending updates but held back."
+echo "# HELP apt_upgrades_held Apt packages pending updates but held back (apt-mark hold), series only exported when held, value is always 1"
 echo "# TYPE apt_upgrades_held gauge"
 
 for pkg_name in "${!upgrades_held[@]}"; do
@@ -164,7 +164,7 @@ if output=$(apt-get -s autoremove 2>/dev/null); then
     autoremove_count=$(awk '/^Remv / { count++ } END { print count+0 }' <<< "$output")
 fi
 
-echo "# HELP apt_autoremove_pending Apt packages pending autoremoval."
+echo "# HELP apt_autoremove_pending Number of apt packages pending autoremoval (count, 0 = none pending)"
 echo "# TYPE apt_autoremove_pending gauge"
 echo "apt_autoremove_pending $autoremove_count"
 
@@ -184,6 +184,6 @@ if [[ -f "$stamp_file" ]]; then
     ts=$(stat -c %Y "$stamp_file" 2>/dev/null || echo 0)
 fi
 
-echo "# HELP apt_package_cache_timestamp_seconds Apt update last run time."
+echo "# HELP apt_package_cache_timestamp_seconds Unix timestamp of the last successful apt update run, 0 = unknown/never run"
 echo "# TYPE apt_package_cache_timestamp_seconds gauge"
 echo "apt_package_cache_timestamp_seconds $ts"

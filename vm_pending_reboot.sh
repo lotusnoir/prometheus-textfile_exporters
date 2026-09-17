@@ -373,7 +373,7 @@ fi
 #-------------------------------------------------------------------------------
 
 printf '%s\n' \
-    '# HELP vm_pending_reboot Check if a pending reboot is required' \
+    '# HELP vm_pending_reboot Check if a pending reboot is required, 0 = no reboot required, 1 = reboot required' \
     '# TYPE vm_pending_reboot gauge'
 
 printf 'vm_pending_reboot{reason="%s"} %d\n' \
@@ -381,14 +381,14 @@ printf 'vm_pending_reboot{reason="%s"} %d\n' \
     "$REBOOT"
 
 printf '%s\n' \
-    '# HELP vm_pending_reboot_scrape_error 1 if an error occurred during detection' \
+    '# HELP vm_pending_reboot_scrape_error Check if an error occurred during detection, 0 = ok, 1 = error' \
     '# TYPE vm_pending_reboot_scrape_error gauge'
 
 printf 'vm_pending_reboot_scrape_error %d\n' \
     "$SCRAPE_ERROR"
 
 printf '%s\n' \
-    '# HELP vm_pending_kernel Check if a new kernel is available' \
+    '# HELP vm_pending_kernel Check if the running kernel differs from the latest installed/available kernel, 0 = running kernel up to date, 1 = kernel mismatch' \
     '# TYPE vm_pending_kernel gauge'
 
 printf 'vm_pending_kernel{running_kernel="%s",latest_installed_kernel="%s",latest_available_kernel="%s"} %d\n' \
@@ -398,7 +398,7 @@ printf 'vm_pending_kernel{running_kernel="%s",latest_installed_kernel="%s",lates
     "$MISMATCH_VALUE"
 
 printf '%s\n' \
-    '# HELP node_kernel_expected Check available version' \
+    '# HELP node_kernel_expected Check if a newer kernel is available compared to the running kernel, 0 = up to date, 1 = mismatch (newer kernel available)' \
     '# TYPE node_kernel_expected gauge'
 
 printf 'node_kernel_expected{latest_available_kernel="%s"} %d\n' \
@@ -406,7 +406,7 @@ printf 'node_kernel_expected{latest_available_kernel="%s"} %d\n' \
     "$MISMATCH_VALUE"
 
 printf '%s\n' \
-    '# HELP node_kernel_installed Check available version' \
+    '# HELP node_kernel_installed Check if a newer kernel package is available but not yet installed, 0 = latest kernel package installed, 1 = newer kernel package available but not installed' \
     '# TYPE node_kernel_installed gauge'
 
 printf 'node_kernel_installed{latest_installed_kernel="%s"} %d\n' \
