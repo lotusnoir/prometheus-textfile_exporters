@@ -20,7 +20,7 @@
 #                 rpm, dnf/yum, needs-restarting (optional)
 #
 #       AUTHOR:  Philippe LEAL (lotus.noir@gmail.com)
-#      VERSION: 2.2
+#      VERSION: 2.3
 #      CREATED: 2025-10-02
 #===============================================================================
 
@@ -388,6 +388,13 @@ else
     MISMATCH_VALUE=0
 fi
 
+#---------------------------------------------------------------------------
+# node_kernel_installed:
+#   1 = a newer kernel package is available in the repo but not yet
+#       installed on disk (needs "apt/dnf upgrade")
+#   0 = latest kernel package is already installed
+#---------------------------------------------------------------------------
+
 INSTALLED_VALUE=0
 
 if [[ "$LATEST_INSTALLED_KERNEL" != "unknown" &&
@@ -395,6 +402,22 @@ if [[ "$LATEST_INSTALLED_KERNEL" != "unknown" &&
       "$LATEST_AVAILABLE_KERNEL" != "$LATEST_INSTALLED_KERNEL" ]]
 then
     INSTALLED_VALUE=1
+fi
+
+#---------------------------------------------------------------------------
+# node_kernel_expected:
+#   1 = a kernel package is installed on disk but the system is not yet
+#       running it (reboot needed to activate the installed kernel)
+#   0 = running kernel matches the latest installed kernel package
+#---------------------------------------------------------------------------
+
+EXPECTED_VALUE=0
+
+if [[ "$LATEST_INSTALLED_KERNEL" != "unknown" &&
+      "$RUNNING_KERNEL" != "unknown" &&
+      "$RUNNING_KERNEL" != "$LATEST_INSTALLED_KERNEL" ]]
+then
+    EXPECTED_VALUE=1
 fi
 
 #-------------------------------------------------------------------------------
@@ -427,19 +450,21 @@ printf 'vm_pending_kernel{running_kernel="%s",latest_installed_kernel="%s",lates
     "$MISMATCH_VALUE"
 
 printf '%s\n' \
-    '# HELP node_kernel_expected Check if a newer kernel is available compared to the running kernel, 0 = up to date, 1 = mismatch (newer kernel available)' \
+    '# HELP node_kernel_expected Check if an installed kernel package is not yet running, 0 = running kernel matches latest installed kernel, 1 = installed kernel not running (reboot needed)' \
     '# TYPE node_kernel_expected gauge'
 
-printf 'node_kernel_expected{latest_available_kernel="%s"} %d\n' \
-    "$LATEST_AVAILABLE_KERNEL" \
-    "$MISMATCH_VALUE"
+printf 'node_kernel_expected{running_kernel="%s",latest_installed_kernel="%s"} %d\n' \
+    "$RUNNING_KERNEL" \
+    "$LATEST_INSTALLED_KERNEL" \
+    "$EXPECTED_VALUE"
 
 printf '%s\n' \
     '# HELP node_kernel_installed Check if a newer kernel package is available but not yet installed, 0 = latest kernel package installed, 1 = newer kernel package available but not installed' \
     '# TYPE node_kernel_installed gauge'
 
-printf 'node_kernel_installed{latest_installed_kernel="%s"} %d\n' \
+printf 'node_kernel_installed{latest_installed_kernel="%s",latest_available_kernel="%s"} %d\n' \
     "$LATEST_INSTALLED_KERNEL" \
+    "$LATEST_AVAILABLE_KERNEL" \
     "$INSTALLED_VALUE"
 
 exit 0

@@ -34,17 +34,17 @@
 #   ./squid_prometheus_exporter.sh                          # affiche sur stdout
 #   ./squid_prometheus_exporter.sh > squid_stats.prom        # vers un fichier
 
-LOGFILE="/var/log/squid/access.log"
+LOGFILE="${LOGFILE:-/var/log/squid/access.log}"
 
 # Motifs a exclure de l'analyse (bruit connu / domaines et sous-reseaux internes)
-EXCLUDE_PATTERN=""
+EXCLUDE_PATTERN="${EXCLUDE_PATTERN:-}"
 
 # "ip" = 1 serie par IP client (necessaire pour la resolution DNS)
 # "subnet" = regroupement par /24 (desactive de facto la resolution DNS)
 CLIENT_LABEL_MODE="ip"
 
 # Resolution DNS inverse des IP clientes (true/false)
-RESOLVE_CLIENT_DNS="true"
+RESOLVE_CLIENT_DNS="${RESOLVE_CLIENT_DNS:-true}"
 
 if [ ! -f "$LOGFILE" ]; then
     echo "Fichier introuvable: $LOGFILE" >&2
@@ -54,7 +54,11 @@ fi
 TMPDIR=$(mktemp -d)
 trap 'rm -rf "$TMPDIR"' EXIT
 
-grep -Ev "$EXCLUDE_PATTERN" "$LOGFILE" > "$TMPDIR/filtered.log"
+if [ -n "$EXCLUDE_PATTERN" ]; then
+    grep -Ev "$EXCLUDE_PATTERN" "$LOGFILE" > "$TMPDIR/filtered.log"
+else
+    cat "$LOGFILE" > "$TMPDIR/filtered.log"
+fi
 
 # ---------------------------------------------------------------------------
 # Resolution DNS inverse des clients (une fois par IP unique)
