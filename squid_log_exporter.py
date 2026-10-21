@@ -13,7 +13,7 @@ from urllib.parse import urlsplit
 
 LOG_FILE = "/var/log/squid/access.log"
 STATE_FILE = "/var/lib/squid-prom-exporter/state.json"
-OUT_FILE = "/var/lib/node_exporter/textfile_collector/squid_log.prom"
+OUT_FILE = "/var/lib/node_exporter/squid_log.prom"
 NOTES_CONF = "/etc/squid/conf.d/notes.conf"
 
 
