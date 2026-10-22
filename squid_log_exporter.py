@@ -11,10 +11,11 @@ Squid access.log -> Prometheus textfile exporter.
 import json, os, re, sys, tempfile, time
 from urllib.parse import urlsplit
 
-LOG_FILE = "/var/log/squid/access.log"
-STATE_FILE = "/var/lib/squid-prom-exporter/state.json"
-OUT_FILE = "/var/lib/node_exporter/squid_log.prom"
-NOTES_CONF = "/etc/squid/conf.d/notes.conf"
+LOG_FILE = os.environ.get("SQUID_LOG_EXPORTER_LOG_FILE", "/var/log/squid/access.log")
+STATE_FILE = os.environ.get("SQUID_LOG_EXPORTER_STATE_FILE", "/var/lib/squid-prom-exporter/state.json")
+OUT_FILE = os.environ.get("SQUID_LOG_EXPORTER_OUT_FILE", "/var/lib/node_exporter/squid_log.prom")
+NOTES_CONF = os.environ.get("SQUID_LOG_EXPORTER_NOTES_CONF", "/etc/squid/conf.d/notes.conf")
+OUT_FILE_MODE = int(os.environ.get("SQUID_LOG_EXPORTER_OUT_FILE_MODE", "0o644"), 8)
 
 
 def load_state():
@@ -131,16 +132,18 @@ def parse_line(line, counters):
 
     # --- DENIED breakdown (source/destination) ---
     if cache_result == "TCP_DENIED" or "DENIED" in cache_result:
+        full_url = sanitize_label(url)
         labels_denied = (
-            f'rule="{rule}",client_ip="{client_ip}",destination="{destination}",'
+            f'rule="{rule}",client_ip="{client_ip}",destination="{destination}",url="{full_url}",'
             f'http_status="{http_status}",method="{method}"'
         )
         bump(counters, f"denied|{labels_denied}")
 
     # --- any 5xx breakdown (covers 503 etc.) with source/destination ---
     if status_class == "5xx":
+        full_url = sanitize_label(url)
         labels_5xx = (
-            f'rule="{rule}",client_ip="{client_ip}",destination="{destination}",'
+            f'rule="{rule}",client_ip="{client_ip}",destination="{destination}",url="{full_url}",'
             f'http_status="{http_status}",cache_result="{cache_result}",method="{method}"'
         )
         bump(counters, f"status5xx|{labels_5xx}")
@@ -226,6 +229,7 @@ def write_metrics(counters, parse_errors):
     fd, tmp_path = tempfile.mkstemp(dir=os.path.dirname(OUT_FILE))
     with os.fdopen(fd, "w") as f:
         f.write("\n".join(lines) + "\n")
+    os.chmod(tmp_path, OUT_FILE_MODE)
     os.replace(tmp_path, OUT_FILE)
 
 
