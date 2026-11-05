@@ -11,6 +11,8 @@ Squid access.log -> Prometheus textfile exporter.
   through these rules is recorded as its own time series.
 - last_seen gauge for every domain declared under /etc/squid/conf.d/destinations/*,
   so you can spot domains that are configured but never (or no longer) used.
+- Accepts both the legacy whitespace-separated squid logformat and the new JSON
+  logformat, auto-detected per line (or forced via SQUID_LOG_EXPORTER_FORMAT).
 """
 import json, os, re, sys, tempfile, time
 from urllib.parse import urlsplit
@@ -21,6 +23,12 @@ OUT_FILE = os.environ.get("SQUID_LOG_EXPORTER_OUT_FILE", "/var/lib/node_exporter
 NOTES_CONF = os.environ.get("SQUID_LOG_EXPORTER_NOTES_CONF", "/etc/squid/conf.d/notes.conf")
 DESTINATIONS_DIR = os.environ.get("SQUID_LOG_EXPORTER_DESTINATIONS_DIR", "/etc/squid/conf.d/destinations")
 OUT_FILE_MODE = int(os.environ.get("SQUID_LOG_EXPORTER_OUT_FILE_MODE", "0o644"), 8)
+
+# "auto" (default): sniff each line (starts with '{' -> JSON, else legacy).
+# "json" / "legacy": force one parser only (useful for testing / troubleshooting).
+LOG_FORMAT = os.environ.get("SQUID_LOG_EXPORTER_FORMAT", "auto").strip().lower()
+if LOG_FORMAT not in ("auto", "json", "legacy"):
+    sys.exit(f"invalid SQUID_LOG_EXPORTER_FORMAT: {LOG_FORMAT!r} (expected auto|json|legacy)")
 
 # Rules for which every individual URL seen must be recorded as its own series.
 URL_LOGGED_RULES = {"global_domain", "global_ips"}
@@ -181,39 +189,99 @@ def extract_destination(url, method):
 
 def sanitize_label(value):
     # Escape characters that would break Prometheus exposition format
-    return value.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "")
+    return str(value).replace("\\", "\\\\").replace('"', '\\"').replace("\n", "")
 
 
-def parse_line(line, counters, last_seen, now, dest_exact, dest_suffix):
+# --- Per-format field extraction -------------------------------------------------
+# Both parsers return a dict with the same normalized keys, or None on failure:
+#   client_ip, code_field ("CACHE_RESULT/status"), bytes, method, url,
+#   hier_field ("PEER/host" or "HIER_NONE/-"), rule
+# The rest of parse_line() is format-agnostic.
+
+def parse_legacy_fields(line):
     parts = line.split()
     # Expected fixed squid logformat with rule_matched note appended:
     # 0:ts 1:elapsed_ms 2:client_ip 3:code/status 4:bytes 5:method 6:url
     # 7:rfc931 8:hier/peer 9:mime_type 10:rule
     if len(parts) < 11:
-        return False
-
+        return None
     try:
-        client_ip = parts[2]
-        code_field = parts[3]
-        nbytes = int(parts[4])
-        method = parts[5]
-        url = parts[6]
-        hier_field = parts[8]
+        return {
+            "client_ip": parts[2],
+            "code_field": parts[3],
+            "bytes": int(parts[4]),
+            "method": parts[5],
+            "url": parts[6],
+            "hier_field": parts[8],
+            "rule": parts[-1] or "unknown",
+        }
     except (ValueError, IndexError):
+        return None
+
+
+def parse_json_fields(line):
+    try:
+        rec = json.loads(line)
+    except json.JSONDecodeError:
+        return None
+    try:
+        return {
+            "client_ip": rec["client_ip"],
+            "code_field": rec["status"],
+            "bytes": int(rec["bytes"]),
+            "method": rec["method"],
+            "url": rec["url"],
+            "hier_field": rec.get("hierarchy", "HIER_NONE/-"),
+            "rule": rec.get("rule_matched") or "unknown",
+        }
+    except (KeyError, ValueError, TypeError):
+        return None
+
+
+def extract_fields(line, fmt):
+    """Dispatch to the right parser according to fmt ('auto'|'json'|'legacy')."""
+    if fmt == "json":
+        return parse_json_fields(line)
+    if fmt == "legacy":
+        return parse_legacy_fields(line)
+
+    # auto: sniff on the first non-space character
+    stripped = line.lstrip()
+    if stripped.startswith("{"):
+        fields = parse_json_fields(line)
+        if fields is None:
+            fields = parse_legacy_fields(line)  # unlikely fallback safety net
+        return fields
+    else:
+        fields = parse_legacy_fields(line)
+        if fields is None:
+            fields = parse_json_fields(line)  # unlikely fallback safety net
+        return fields
+
+
+def parse_line(line, counters, last_seen, now, dest_exact, dest_suffix, fmt=LOG_FORMAT):
+    fields = extract_fields(line, fmt)
+    if fields is None:
         return False
 
-    rule = sanitize_label(parts[-1]) or "unknown"
+    rule = sanitize_label(fields["rule"])
+    code_field = fields["code_field"]
+    nbytes = fields["bytes"]
+    method_raw = fields["method"]
+    url = fields["url"]
+    hier_field = fields["hier_field"]
+    client_ip_raw = fields["client_ip"]
 
     cache_result, _, http_status = code_field.partition("/")
     http_status = http_status or "000"
     status_class = f"{http_status[0]}xx" if http_status.isdigit() and len(http_status) == 3 else "unknown"
 
     peer = hier_field.split("/")[0] if "/" in hier_field else hier_field
-    raw_destination = extract_destination(url, method)
+    raw_destination = extract_destination(url, method_raw)
     destination = sanitize_label(raw_destination)
-    client_ip = sanitize_label(client_ip)
+    client_ip = sanitize_label(client_ip_raw)
     cache_result = sanitize_label(cache_result)
-    method = sanitize_label(method)
+    method = sanitize_label(method_raw)
 
     # --- standard metrics ---
     labels_req = (
