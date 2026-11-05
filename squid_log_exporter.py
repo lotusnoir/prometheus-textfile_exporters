@@ -13,6 +13,10 @@ Squid access.log -> Prometheus textfile exporter.
   so you can spot domains that are configured but never (or no longer) used.
 - Accepts both the legacy whitespace-separated squid logformat and the new JSON
   logformat, auto-detected per line (or forced via SQUID_LOG_EXPORTER_FORMAT).
+- Tolerant of Squid's JSON logformat emitting an invalid bare "-" placeholder
+  for numeric fields it couldn't compute (e.g. "duration_total_ms":-,), and of
+  quoted-but-unavailable numeric fields (e.g. "bytes":"-") once the logformat
+  is fixed to always quote them.
 """
 import json, os, re, sys, tempfile, time
 from urllib.parse import urlsplit
@@ -40,6 +44,13 @@ URL_LOGGED_RULES = {"global_domain", "global_ips"}
 # it tracks a finite, config-driven list of domains and must persist even with 0 traffic.
 HIGH_CARDINALITY_METRICS = ("denied", "status5xx", "url_seen")
 TTL_SECONDS = int(os.environ.get("SQUID_LOG_EXPORTER_TTL_SECONDS", str(1 * 24 * 3600)))
+
+# Legacy workaround: Squid's JSON logformat can emit a bare, unquoted "-"
+# placeholder for numeric fields it couldn't compute (e.g. "duration_total_ms":-,),
+# which is invalid JSON. If your logformat quotes these fields (recommended fix:
+# "duration_total_ms":"%dt", "response_time_ms":"%6tr", "bytes":"%<st"), this
+# regex is never needed, but we keep it as a safety net for older/unfixed lines.
+_BARE_DASH_RE = re.compile(r':\s*-\s*([,}])')
 
 
 def load_state():
@@ -192,6 +203,17 @@ def sanitize_label(value):
     return str(value).replace("\\", "\\\\").replace('"', '\\"').replace("\n", "")
 
 
+def to_int(value, default=0):
+    """
+    Convert a numeric field to int, tolerating Squid's "-" placeholder for
+    values it couldn't compute (e.g. bytes/duration on some denied requests).
+    """
+    try:
+        return int(value)
+    except (ValueError, TypeError):
+        return default
+
+
 # --- Per-format field extraction -------------------------------------------------
 # Both parsers return a dict with the same normalized keys, or None on failure:
 #   client_ip, code_field ("CACHE_RESULT/status"), bytes, method, url,
@@ -209,32 +231,40 @@ def parse_legacy_fields(line):
         return {
             "client_ip": parts[2],
             "code_field": parts[3],
-            "bytes": int(parts[4]),
+            "bytes": to_int(parts[4]),
             "method": parts[5],
             "url": parts[6],
             "hier_field": parts[8],
             "rule": parts[-1] or "unknown",
         }
-    except (ValueError, IndexError):
+    except IndexError:
         return None
+
+
+def _sanitize_json_line(line):
+    """Quote any remaining bare '-' placeholder so the line parses as JSON."""
+    return _BARE_DASH_RE.sub(r':"-"\1', line)
 
 
 def parse_json_fields(line):
     try:
         rec = json.loads(line)
     except json.JSONDecodeError:
-        return None
+        try:
+            rec = json.loads(_sanitize_json_line(line))
+        except json.JSONDecodeError:
+            return None
     try:
         return {
             "client_ip": rec["client_ip"],
             "code_field": rec["status"],
-            "bytes": int(rec["bytes"]),
+            "bytes": to_int(rec["bytes"]),
             "method": rec["method"],
             "url": rec["url"],
             "hier_field": rec.get("hierarchy", "HIER_NONE/-"),
             "rule": rec.get("rule_matched") or "unknown",
         }
-    except (KeyError, ValueError, TypeError):
+    except (KeyError, TypeError):
         return None
 
 
