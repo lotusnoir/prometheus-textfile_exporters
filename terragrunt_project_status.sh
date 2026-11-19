@@ -8,7 +8,7 @@
 #
 #  REQUIREMENTS: bash 5.1+, curl, jq
 #       AUTHOR:  Philippe LEAL (lotus.noir@gmail.com)
-#      VERSION: 3.1
+#      VERSION: 3.2
 #      CREATED: 2025-10-02
 #===============================================================================
 set -euo pipefail  # Strict error handling
@@ -25,6 +25,7 @@ MAX_JOBS="${MAX_JOBS:-8}"
 MAX_RETRIES="${MAX_RETRIES:-3}"
 PLAN_TIMEOUT="${PLAN_TIMEOUT:-300}"   # sécurité anti-blocage (secondes)
 INIT_TIMEOUT="${INIT_TIMEOUT:-180}"
+STATE_LIST_TIMEOUT="${STATE_LIST_TIMEOUT:-60}"
 CLEAN_PLUGIN_CACHE="${CLEAN_PLUGIN_CACHE:-false}"   # mettre à true pour repartir d'un cache propre
 
 #################################
@@ -40,7 +41,7 @@ export TERRAGRUNT_NON_INTERACTIVE=true
 # Le code Terraform référence var.terraform_path / var.ansible_path avec un default
 # pointant vers /opt/... ; on surcharge pour qu'il pointe vers le clone réel de ce script.
 export TF_VAR_terraform_path="$REPO_CLONE_DIR"
-export TF_VAR_ansible_path="${ANSIBLE_CLONE_DIR:-/opt/ansible_core}"
+# export TF_VAR_ansible_path="${ANSIBLE_CLONE_DIR:-/opt/ansible_core}"  # décommenter/adapter si nécessaire
 
 # Build authenticated repo URL
 AUTH_REPO_URL="https://oauth2:${GIT_TOKEN}@${BASE_REPO_URL}"
@@ -142,9 +143,36 @@ run_terragrunt_plan() {
             echo "[DEBUG][$short_path] --- terragrunt init output ---" >&2
             tail -20 "/tmp/tg_init_${job_number}.log" >&2
         fi
-        return 1
+        echo "terragrunt_project_status{path=\"$short_path\"} 1"
+        return 0
     fi
     debug "[$short_path] terragrunt init OK"
+
+    # Vérifier l'état du state AVANT le plan, pour distinguer :
+    #  - state inaccessible (backend/erreur réseau) -> code 1
+    #  - state vide (projet jamais appliqué)         -> code 3
+    #  - state non vide -> on continue vers le plan normal
+    local state_list state_rc
+    set +e
+    state_list=$(timeout "$STATE_LIST_TIMEOUT" terragrunt state list 2>"/tmp/tg_statelist_${job_number}.log")
+    state_rc=$?
+    set -e
+
+    if [ $state_rc -ne 0 ]; then
+        log "[$short_path] state list failed (backend issue?)"
+        if [ "$DEBUG" = "on" ]; then
+            echo "[DEBUG][$short_path] --- state list error ---" >&2
+            tail -10 "/tmp/tg_statelist_${job_number}.log" >&2
+        fi
+        echo "terragrunt_project_status{path=\"$short_path\"} 1"
+        return 0
+    fi
+
+    if [ -z "$state_list" ]; then
+        debug "[$short_path] Empty state detected -> never applied (exit_code=3)"
+        echo "terragrunt_project_status{path=\"$short_path\"} 3"
+        return 0
+    fi
 
     # Run plan and capture output, avec retry sur erreurs transitoires (ex: text file busy)
     local plan_output
@@ -154,33 +182,49 @@ run_terragrunt_plan() {
     debug "[$short_path] Running terragrunt plan (timeout ${PLAN_TIMEOUT}s)..."
     while :; do
         plan_attempt=$((plan_attempt + 1))
-        if plan_output=$(timeout "$PLAN_TIMEOUT" terragrunt plan -input=false -no-color -detailed-exitcode 2>&1); then
-            exit_code=0  # No changes
+        set +e
+        plan_output=$(timeout "$PLAN_TIMEOUT" terragrunt plan -input=false -no-color -detailed-exitcode 2>&1)
+        exit_code=$?
+        set -e
+
+        if [ $exit_code -eq 0 ]; then
             debug "[$short_path] Plan: no changes"
             break
-        else
-            exit_code=$?
-            if [ $exit_code -eq 124 ]; then
-                log "Plan TIMEOUT after ${PLAN_TIMEOUT}s for $short_path"
-                break
-            fi
-            # Erreurs transitoires connues (cache providers en cours d'écriture) : on retente
-            if echo "$plan_output" | grep -qi "text file busy\|fork/exec" && [ "$plan_attempt" -lt "$MAX_RETRIES" ]; then
-                log "[$short_path] Transient provider error, retry $plan_attempt/$MAX_RETRIES"
-                sleep 3
-                continue
-            fi
+        fi
+
+        if [ $exit_code -eq 2 ]; then
+            debug "[$short_path] Plan: changes detected"
             break
         fi
+
+        if [ $exit_code -eq 124 ]; then
+            log "Plan TIMEOUT after ${PLAN_TIMEOUT}s for $short_path"
+            exit_code=1
+            break
+        fi
+
+        # Erreurs transitoires connues (cache providers en cours d'écriture) : on retente
+        if echo "$plan_output" | grep -qi "text file busy\|fork/exec" && [ "$plan_attempt" -lt "$MAX_RETRIES" ]; then
+            log "[$short_path] Transient provider error, retry $plan_attempt/$MAX_RETRIES"
+            sleep 3
+            continue
+        fi
+
+        break
     done
 
     if [ "$DEBUG" = "on" ] && [ "$exit_code" -ne 0 ] && [ "$exit_code" -ne 2 ]; then
         echo "$plan_output" | grep -i -E "error:|warning:|fail|invalid|denied|forbidden|timeout|not found|critical" | head -10 >&2
         log "Plan failed with exit code $exit_code in path: $short_path"
-        # Dump complet en cas d'échec persistant, pour diagnostic fin
         echo "[DEBUG][$short_path] --- FULL PLAN OUTPUT ---" >&2
         echo "$plan_output" >&2
         echo "[DEBUG][$short_path] --- END PLAN OUTPUT ---" >&2
+    fi
+
+    # Normaliser tout code d'erreur "exotique" (ex: wrapper terragrunt renvoyant >2) vers 1
+    # Codes finaux attendus : 0=ok, 1=erreur, 2=changements, 3=state vide (géré plus haut)
+    if [ "$exit_code" -gt 2 ]; then
+        exit_code=1
     fi
 
     # Always output Prometheus metrics
@@ -224,7 +268,7 @@ step "clean terragrunt-cache dirs" bash -c "find '$PROJECT_PATH' -type d -name '
 update_submodules
 
 # Prometheus headers (always output)
-echo "# HELP terragrunt_project_status check plan status on project, 0 = all ok, 1 = error, 2 = changes to apply"
+echo "# HELP terragrunt_project_status check plan status on project, 0 = all ok, 1 = error, 2 = changes to apply, 3 = empty state (never applied)"
 echo "# TYPE terragrunt_project_status gauge"
 
 # Find all terragrunt projects

@@ -1,14 +1,97 @@
-#!/usr/bin/env bash
+#===============================================================================
+#         FILE:  vsphere_vms_dns_mismatch.sh
 #
-# vsphere_vms_dns_mismatch.sh
+#        USAGE:  ./vsphere_vms_dns_mismatch.sh
 #
-# Ensure that vm_name inside vcenter == dns name == vm hostname == ip PTR
-# Ensure that dns_name_ip == vm_ip
+#  DESCRIPTION:
+#                Cross-checks vCenter VM inventory against DNS (A/PTR) and
+#                guest OS state over SSH, exposing results in Prometheus
+#                textfile format:
 #
-# Get secrets from vault, support include / exclude regex to filter vcenter objects
+#                  vm_dns_mismatch_hostname{vm,ip,ssh_error}
+#                      0 = hostname inside VM matches DNS name
+#                      1 = hostname inside VM differs from DNS name
+#                      2 = no DNS (A) record found for this VM
+#                      3 = SSH unreachable (see ssh_error label for reason)
+#                      4 = VM excluded from SSH checks (SSH_EXCLUDE_LIST)
 #
-############################################################################
-
+#                  vm_dns_mismatch_reverse{vm,ip,ptr}
+#                      0 = PTR record matches the expected FQDN
+#                      1 = no PTR record found for this IP
+#                      2 = PTR record points to a different name
+#
+#                  vm_dns_mismatch_ip{vm,dns_ip,guest_ip,ssh_error}
+#                      0 = IP resolved by DNS matches an IP inside the VM
+#                      1 = none of the VM's IPs match the DNS-resolved IP
+#                      3 = SSH unreachable (see ssh_error label for reason)
+#                      4 = VM excluded from SSH checks (SSH_EXCLUDE_LIST)
+#
+#                Labels:
+#                  ssh_error : ok | no_dns | timeout | auth_failed | refused |
+#                              dns_resolution | no_route | host_key |
+#                              net_timeout | conn_closed | other | excluded
+#
+#  REQUIREMENTS: bash 5.1+, curl, jq, dig, sshpass, ssh, xargs, awk, timeout,
+#                vault (Vault CLI, only if secrets are not provided via env)
+#
+#    ARGUMENTS:  None (all configuration is via environment variables below).
+#
+#  ENVIRONMENT:
+#                --- vCenter connection ---
+#                VSPHERE_SERVER        vCenter FQDN/IP (from Vault if unset)
+#                VSPHERE_USER          vCenter username (from Vault if unset)
+#                VSPHERE_PASS          vCenter password (from Vault if unset)
+#                VSPHERE_SECRET_PATH   Vault KV path for vCenter creds
+#                                      (default: machines/prod/apps/terraform/vsphere)
+#
+#                --- SSH connection to guest OS ---
+#                SSH_USER              SSH username used to connect to VMs
+#                                      (default: app-ansible)
+#                SSH_USER_PASSWORD     SSH password (from Vault if unset)
+#                SSH_SECRET_PATH       Vault KV path for SSH creds
+#                                      (default: machines/prod/apps/terraform/ssh)
+#                SSH_TIMEOUT           Per-connection timeout, seconds
+#                                      (default: 30)
+#                SSH_OPTS              Extra ssh options
+#                                      (default: "-o StrictHostKeyChecking=no
+#                                       -o ConnectTimeout=$SSH_TIMEOUT -o BatchMode=no")
+#                SSH_RETRIES           Retries on transient SSH errors
+#                                      (timeout / connection closed / no route)
+#                                      (default: 2)
+#                SSH_RETRY_DELAY       Delay between SSH retries, seconds
+#                                      (default: 3)
+#
+#                --- Vault authentication ---
+#                VAULT_TOKEN           Required if VSPHERE_*/SSH_USER_PASSWORD
+#                                      are not already set directly
+#
+#                --- DNS resolution ---
+#                DNS_SERVER            DNS server to query (default: system resolver)
+#                DNS_DOMAIN            Domain suffix appended to VM names
+#                                      for A/PTR lookups (required)
+#
+#                --- VM selection filters ---
+#                INCLUDE_LIST          Space-separated ERE patterns; a VM name
+#                                      must match at least one to be checked
+#                                      (default: "^vm-")
+#                EXCLUDE_LIST          Space-separated ERE patterns; a VM name
+#                                      matching any of these is fully skipped
+#                                      (default: list of known appliances/
+#                                       infra VMs, see script)
+#                SSH_EXCLUDE_LIST      Space-separated ERE patterns; matching
+#                                      VMs are still DNS/PTR-checked but SKIPPED
+#                                      for SSH/hostname/IP checks (status=4)
+#                                      (default: empty)
+#
+#                --- Execution control ---
+#                MAX_JOBS              Max parallel VM checks (default: 80)
+#                GLOBAL_TIMEOUT        Hard wall-clock limit for the whole
+#                                      parallel run, seconds (default: 1800)
+#
+#       AUTHOR: Philippe LEAL
+#      VERSION: 1.6
+#      CREATED: 2025-11-19
+#===============================================================================
 set -euo pipefail
 
 export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
@@ -22,6 +105,9 @@ DNS_DOMAIN="${DNS_DOMAIN:-}"
 
 DIG_BASE=(dig)
 [[ -n "$DNS_SERVER" ]] && DIG_BASE+=("@${DNS_SERVER}")
+
+SSH_RETRIES="${SSH_RETRIES:-2}"
+SSH_RETRY_DELAY="${SSH_RETRY_DELAY:-3}"
 
 ############################################################################
 ### Temp files / cleanup
@@ -38,6 +124,8 @@ cleanup() {
             "https://${VSPHERE_SERVER}/rest/com/vmware/cis/session" \
             >/dev/null 2>&1 || true
     fi
+    # Ne jamais laisser le mot de passe SSH traîner en variable d'environnement
+    unset SSHPASS SSH_USER_PASSWORD 2>/dev/null || true
     rm -rf "$TMP_DIR"
     exit "$rc"
 }
@@ -55,6 +143,33 @@ require_root() {
 }
 
 require_root
+
+require_commands() {
+    local missing=()
+    for cmd in "$@"; do
+        command -v "$cmd" >/dev/null 2>&1 || missing+=("$cmd")
+    done
+    if [[ "${#missing[@]}" -gt 0 ]]; then
+        echo "ERROR: missing required commands: ${missing[*]}" >&2
+        exit 1
+    fi
+}
+
+require_commands dig curl jq sshpass ssh xargs awk timeout
+
+############################################################################
+### DNS server health check (avoid false "no_dns" mass diagnosis)
+############################################################################
+
+if [[ -z "$DNS_DOMAIN" ]]; then
+    echo "ERROR: DNS_DOMAIN is not set, exiting." >&2
+    exit 1
+fi
+
+if ! timeout 10 "${DIG_BASE[@]}" +short +time=5 +tries=1 "$DNS_DOMAIN" SOA >/dev/null 2>&1; then
+    echo "ERROR: DNS server unreachable or not answering for domain '$DNS_DOMAIN' (checked via SOA query). Aborting to avoid false mass mismatch." >&2
+    exit 1
+fi
 
 ############################################################################
 ### vSphere variables
@@ -90,6 +205,7 @@ if [[ -z "${VSPHERE_SERVER:-}" ||
         jq -r '.data.data.vsphere_password' <<< "$VSPHERE_DATA"
     )}"
 
+    unset VSPHERE_DATA
 fi
 
 ############################################################################
@@ -118,7 +234,13 @@ if [[ -z "${SSH_USER_PASSWORD:-}" ]]; then
         jq -r '.data.data.ssh_password' <<< "$SSH_DATA"
     )
 
+    unset SSH_DATA
 fi
+
+# sshpass -e lit le mot de passe depuis la variable d'environnement SSHPASS,
+# ce qui évite de l'exposer en clair dans `ps aux` / /proc/<pid>/cmdline
+# (contrairement à `sshpass -p`).
+export SSHPASS="$SSH_USER_PASSWORD"
 
 ############################################################################
 ### Filters / parallelism
@@ -128,7 +250,7 @@ IFS=' ' read -r -a INCLUDE_LIST <<< "${INCLUDE_LIST:-^vm-}"
 
 IFS=' ' read -r -a EXCLUDE_LIST <<< "${EXCLUDE_LIST:-vm-talos.* vm-wec.* vm-citrix.* vm-ad-dc.* vm-board.* vm-elipse.* vm-gatewaydwh.* vm-gitrunr.* vm-ndsvc.* vm-protectsys.* vm-provtool.* vm-sig.* vm-syno.* vm-testad.* vm-veeam.* vm-wsus.* vm-windows.* vm-vdi.* vm-openvpn.* vm-ciscossm.*}"
 
-# NEW: VMs matching this list are still DNS/PTR-checked but SKIPPED for SSH
+# VMs matching this list are still DNS/PTR-checked but SKIPPED for SSH
 # (hostname / IP checks). Useful for appliances, scanners, network devices,
 # or any host known not to accept SSH from the app-ansible account.
 IFS=' ' read -r -a SSH_EXCLUDE_LIST <<< "${SSH_EXCLUDE_LIST:-}"
@@ -166,12 +288,14 @@ fi
 EXCLUDE_REGEX=$(IFS="|"; echo "${EXCLUDE_LIST[*]}")
 INCLUDE_REGEX=$(IFS="|"; echo "${INCLUDE_LIST[*]}")
 
-# NEW: SSH exclude regex (empty-safe — an empty regex would match everything
-# with `test()`, so fall back to a pattern that can never match).
-if [[ "${#SSH_EXCLUDE_LIST[@]}" -eq 0 || -z "${SSH_EXCLUDE_LIST[0]}" ]]; then
-    SSH_EXCLUDE_REGEX='(?!)'
-else
+# SSH exclude regex: géré proprement via un flag plutôt qu'un pattern factice
+# "qui ne matche rien" (ERE bash ne supporte pas les lookaheads type (?!)).
+SSH_EXCLUDE_ENABLED=0
+if [[ "${#SSH_EXCLUDE_LIST[@]}" -gt 0 && -n "${SSH_EXCLUDE_LIST[0]}" ]]; then
+    SSH_EXCLUDE_ENABLED=1
     SSH_EXCLUDE_REGEX=$(IFS="|"; echo "${SSH_EXCLUDE_LIST[*]}")
+else
+    SSH_EXCLUDE_REGEX=""
 fi
 
 VM_LIST_JSON=$(
@@ -226,8 +350,12 @@ timeout 60 "${DIG_BASE[@]}" -f "$FQDN_FILE" -t A \
 
 declare -A VM_IP_MAP=()
 
-while read -r name _ttl _class _type rdata; do
+# On ne garde que les enregistrements de type A : un CNAME intermédiaire
+# renverrait un nom d'hôte dans $rdata (pas une IP), ce qui corromprait
+# toute la suite (zone inverse, comparaison SSH).
+while read -r name _ttl _class rtype rdata; do
     [[ -z "${name:-}" || -z "${rdata:-}" ]] && continue
+    [[ "$rtype" != "A" ]] && continue
     name="${name%.}"
     vm="${name%.$DNS_DOMAIN}"
     [[ -n "${VM_IP_MAP[$vm]:-}" ]] && continue
@@ -251,8 +379,9 @@ if [[ -s "$ARPA_FILE" ]]; then
     timeout 60 "${DIG_BASE[@]}" -f "$ARPA_FILE" -t PTR \
         +noall +answer +time=5 +tries=2 > "$PTR_ANSWERS_FILE" || true
 
-    while read -r name _ttl _class _type rdata; do
+    while read -r name _ttl _class rtype rdata; do
         [[ -z "${name:-}" || -z "${rdata:-}" ]] && continue
+        [[ "$rtype" != "PTR" ]] && continue
         name="${name%.}"
         name="${name%.in-addr.arpa}"
         IFS='.' read -r o4 o3 o2 o1 <<< "$name"
@@ -285,6 +414,67 @@ echo "# TYPE vm_dns_mismatch_ip gauge"
 ### Step 5: Check one VM
 ############################################################################
 
+ssh_is_excluded() {
+    local vm="$1"
+    [[ "$SSH_EXCLUDE_ENABLED" -eq 0 ]] && return 1
+    [[ "$vm" =~ $SSH_EXCLUDE_REGEX ]]
+}
+
+# Une seule connexion SSH par tentative, avec retry sur erreurs transitoires
+# (timeout, connexion fermée, pas de route) ; pas de retry sur les erreurs
+# définitives (auth refusée, host key, DNS) pour ne pas perdre de temps.
+ssh_collect_info() {
+    local vm_name="$1"
+    local attempt=0
+    local rc=0
+    local err=""
+    local out=""
+    local err_file
+
+    while :; do
+        attempt=$((attempt + 1))
+        err_file="$(mktemp "$TMP_DIR/err.XXXXXX")"
+
+        if out=$(
+            timeout 60 \
+                sshpass -e \
+                ssh \
+                    $SSH_OPTS \
+                    -n \
+                    "$SSH_USER@$vm_name" \
+                    'printf "%s\n" "$(hostname -s)"; hostname -I' \
+                    2>"$err_file"
+        ); then
+            rc=0
+        else
+            rc=$?
+        fi
+
+        err="$(cat "$err_file" 2>/dev/null)"
+        rm -f "$err_file"
+
+        if [[ "$rc" -eq 0 ]]; then
+            SSH_RESULT_OUT="$out"
+            SSH_RESULT_RC=0
+            SSH_RESULT_ERR=""
+            return 0
+        fi
+
+        # Erreurs transitoires -> retry ; erreurs définitives -> sortie immédiate
+        if [[ "$rc" -eq 124 || "$err" == *"Connection timed out"* || "$err" == *"Connection closed"* || "$err" == *"No route to host"* ]]; then
+            if [[ "$attempt" -le "$SSH_RETRIES" ]]; then
+                sleep "$SSH_RETRY_DELAY"
+                continue
+            fi
+        fi
+
+        SSH_RESULT_OUT=""
+        SSH_RESULT_RC="$rc"
+        SSH_RESULT_ERR="$err"
+        return 1
+    done
+}
+
 check_vm() {
 
     local VM_NAME="$1"
@@ -298,7 +488,6 @@ check_vm() {
     local SSH_RC=0
     local SSH_ERR=""
     local SSH_REASON="ok"
-    local ERR_FILE=""
 
     local HOSTNAME_STATUS=3
     local REVERSE_STATUS=1
@@ -328,10 +517,10 @@ check_vm() {
     fi
 
     ########################################################################
-    ### NEW: SSH exclusion check
+    ### SSH exclusion check
     ########################################################################
 
-    if [[ "$VM_NAME" =~ $SSH_EXCLUDE_REGEX ]]; then
+    if ssh_is_excluded "$VM_NAME"; then
 
         printf 'vm_dns_mismatch_hostname{vm="%s",ip="%s",ssh_error="excluded"} 4\n' \
             "$VM_NAME" "$VM_IP"
@@ -346,31 +535,12 @@ check_vm() {
     fi
 
     ########################################################################
-    ### SSH: single connection -> hostname + IPs, with error classification
+    ### SSH: single connection -> hostname + IPs, with retry + error classification
     ########################################################################
 
-    ERR_FILE="$(mktemp "$TMP_DIR/err.XXXXXX")"
+    if ssh_collect_info "$VM_NAME"; then
 
-    if SSH_OUTPUT=$(
-        timeout 60 \
-            sshpass -p "$SSH_USER_PASSWORD" \
-            ssh \
-                $SSH_OPTS \
-                -n \
-                "$SSH_USER@$VM_NAME" \
-                'printf "%s\n" "$(hostname -s)"; hostname -I' \
-                2>"$ERR_FILE"
-    ); then
-        SSH_RC=0
-    else
-        SSH_RC=$?
-    fi
-
-    SSH_ERR="$(cat "$ERR_FILE" 2>/dev/null)"
-    rm -f "$ERR_FILE"
-
-    if [[ "$SSH_RC" -eq 0 ]]; then
-
+        SSH_OUTPUT="$SSH_RESULT_OUT"
         HOST_INSIDE="${SSH_OUTPUT%%$'\n'*}"
         IPS_INSIDE="${SSH_OUTPUT#*$'\n'}"
 
@@ -384,9 +554,10 @@ check_vm() {
 
         for IP in $IPS_INSIDE; do
 
-            if [[ "$IP" == 172.* ]]; then
-                continue
-            fi
+            # Filtre les plages internes/non routables connues et l'IPv6
+            # (hostname -I peut renvoyer les deux, on ne compare qu'en IPv4 publique/privée pertinente)
+            [[ "$IP" == 172.* ]] && continue
+            [[ "$IP" == *:* ]] && continue
 
             if [[ "$IP" == "$VM_IP" ]]; then
                 IP_STATUS=0
@@ -396,13 +567,17 @@ check_vm() {
 
         done
 
-        [[ -z "$MATCHED_IP" ]] && MATCHED_IP="$(awk '{print $1}' <<< "$IPS_INSIDE")"
+        if [[ -z "$MATCHED_IP" ]]; then
+            MATCHED_IP="$(awk '{for (i=1;i<=NF;i++) if ($i !~ /:/) {print $i; exit}}' <<< "$IPS_INSIDE")"
+        fi
         SSH_REASON="ok"
 
     else
 
         HOSTNAME_STATUS=3
         IP_STATUS=3
+        SSH_RC="$SSH_RESULT_RC"
+        SSH_ERR="$SSH_RESULT_ERR"
 
         if   [[ "$SSH_RC" -eq 124 ]];                               then SSH_REASON="timeout"
         elif [[ "$SSH_ERR" == *"Permission denied"* ]];              then SSH_REASON="auth_failed"
@@ -441,29 +616,44 @@ check_vm() {
 ############################################################################
 
 export SSH_USER
-export SSH_USER_PASSWORD
+export SSHPASS
 export SSH_OPTS
 export SSH_TIMEOUT
+export SSH_RETRIES
+export SSH_RETRY_DELAY
 export DNS_DOMAIN
 export DNS_MAP_FILE
 export TMP_DIR
 export SSH_EXCLUDE_REGEX
+export SSH_EXCLUDE_ENABLED
+export MAX_JOBS
 
 export -f check_vm
+export -f ssh_is_excluded
+export -f ssh_collect_info
 
 ############################################################################
-### Step 6: Continuous parallel execution
+### Step 6: Continuous parallel execution (with global safety timeout)
 ############################################################################
 
-printf '%s\0' "${VM_ARRAY[@]}" |
-    xargs \
-        -0 \
-        -r \
-        -n 1 \
-        -P "$MAX_JOBS" \
-        bash -c '
-            source "$DNS_MAP_FILE"
-            check_vm "$1"
-        ' _
+GLOBAL_TIMEOUT="${GLOBAL_TIMEOUT:-1800}"  # 30 min par défaut, garde-fou anti-script qui traîne
+
+set +e
+timeout "$GLOBAL_TIMEOUT" xargs \
+    -0 \
+    -r \
+    -n 1 \
+    -P "$MAX_JOBS" \
+    bash -c '
+        source "$DNS_MAP_FILE"
+        check_vm "$1"
+    ' _ < <(printf '%s\0' "${VM_ARRAY[@]}")
+RC=$?
+set -e
+
+if [[ "$RC" -eq 124 ]]; then
+    echo "ERROR: script exceeded GLOBAL_TIMEOUT (${GLOBAL_TIMEOUT}s), some VMs may not have been checked" >&2
+    exit 1
+fi
 
 exit 0
